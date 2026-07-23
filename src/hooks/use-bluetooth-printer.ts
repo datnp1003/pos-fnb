@@ -3,10 +3,17 @@
 import { useI18n } from "@/i18n/context";
 import { useState, useEffect, useCallback, useRef } from "react";
 
-// Web Bluetooth types for browser-only
-type BTDevice = any;
-type BTServer = any;
-type BTChar = any;
+// Web Bluetooth types for browser-only (minimal subset of the Web Bluetooth API)
+type BTChar = { writeValueWithoutResponse(data: BufferSource): Promise<void> };
+type BTService = { getCharacteristic(uuid: string): Promise<BTChar> };
+type BTServer = { getPrimaryService(uuid: string): Promise<BTService>; disconnect(): void };
+type BTDevice = {
+  gatt?: { connect(): Promise<BTServer> };
+  addEventListener(type: string, listener: () => void): void;
+};
+type BTNavigator = Navigator & {
+  bluetooth?: { requestDevice(options: { acceptAllDevices?: boolean; optionalServices?: string[] }): Promise<BTDevice> };
+};
 
 const SPP_SERVICE = "00001101-0000-1000-8000-00805f9b34fb";
 
@@ -45,13 +52,13 @@ const [state, setState] = useState<BluetoothPrinterState>({
       serverRef.current = server;
       charRef.current = char;
       setState({ device, connected: true, connecting: false, error: null });
-    } catch (e: any) {
-      setState({ device, connected: false, connecting: false, error: e.message });
+    } catch (e) {
+      setState({ device, connected: false, connecting: false, error: (e as Error).message });
     }
   }
 
   const connect = useCallback(async () => {
-    const nav = navigator as any;
+    const nav = navigator as BTNavigator;
     if (!nav.bluetooth) {
       setState(s => ({ ...s, error: t.settings.bluetoothNotSupported }));
       return;
@@ -72,21 +79,18 @@ const [state, setState] = useState<BluetoothPrinterState>({
         charRef.current = null;
       });
 
-      const server = await device.gatt.connect();
+      const server = await device.gatt!.connect();
       const service = await server.getPrimaryService(SPP_SERVICE);
       const char = await service.getCharacteristic(SPP_SERVICE);
 
       serverRef.current = server;
       charRef.current = char;
       setState({ device, connected: true, connecting: false, error: null });
-    } catch (e: any) {
-      if (e.name !== "NotFoundError") {
-        setState(s => ({ ...s, connecting: false, error: e.message }));
-      } else {
-        setState(s => ({ ...s, connecting: false, error: null }));
-      }
+    } catch (e) {
+      const error = (e as Error).name === "NotFoundError" ? null : (e as Error).message;
+      setState(s => ({ ...s, connecting: false, error }));
     }
-  }, []);
+  }, [t.settings.bluetoothNotSupported]);
 
   const print = useCallback(async (text: string): Promise<boolean> => {
     if (!charRef.current) {
@@ -107,11 +111,11 @@ const [state, setState] = useState<BluetoothPrinterState>({
         await charRef.current.writeValueWithoutResponse(data.slice(i, i + CHUNK));
       }
       return true;
-    } catch (e: any) {
-      setState(s => ({ ...s, error: t.settings.bluetoothPrintError + e.message }));
+    } catch (e) {
+      setState(s => ({ ...s, error: t.settings.bluetoothPrintError + (e as Error).message }));
       return false;
     }
-  }, []);
+  }, [t.settings.bluetoothNotConnected, t.settings.bluetoothPrintError]);
 
   const disconnect = useCallback(() => {
     if (serverRef.current) {

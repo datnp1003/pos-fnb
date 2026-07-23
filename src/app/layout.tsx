@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import { SessionProvider } from "next-auth/react";
@@ -6,11 +6,21 @@ import { I18nProvider } from "@/i18n/context";
 import { DeviceProvider } from "@/components/shared/device-provider";
 import "./globals.css";
 
+export const dynamic = "force-dynamic";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+  themeColor: "#ffffff",
+};
+
 export const metadata: Metadata = {
   title: "POS F&B",
-  description: "Hệ thống quản lý nhà hàng — POS F&B",
+  description: "Restaurant Management System — POS F&B",
   manifest: "/manifest.json",
-  viewport: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
   other: {
     "mobile-web-app-capable": "yes",
   },

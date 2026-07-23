@@ -15,13 +15,15 @@ import { toast } from "sonner";
 type KP = { id: string; name: string; areaId: string; startTime: string; endTime: string; pricePerHour: number; minHours: number; dayType: string; timeUnit?: string; area?: { id: string; name: string } };
 type Area = { id: string; name: string; type: string };
 
-type Props = {
+type KPInput = { name: string; areaId: string; startTime: string; endTime: string; pricePerHour: number; minHours?: number; dayType?: string; timeUnit?: string };
+
+type Props = Readonly<{
   pricings: KP[];
   areas: Area[];
-  createKP: (data: any) => Promise<any>;
-  updateKP: (id: string, data: any) => Promise<any>;
-  deleteKP: (id: string) => Promise<any>;
-};
+  createKP: (data: KPInput) => Promise<void>;
+  updateKP: (id: string, data: Record<string, unknown>) => Promise<void>;
+  deleteKP: (id: string) => Promise<void>;
+}>;
 
 const fmt = (v: number) => new Intl.NumberFormat("vi-VN").format(v);
 
@@ -32,7 +34,7 @@ export function KaraokePricingManager({ pricings, areas, createKP, updateKP, del
   const [editing, setEditing] = useState<KP | null>(null);
   const [form, setForm] = useState({ name: "", areaId: "", startTime: "10:00", endTime: "18:00", pricePerHour: "100000", minHours: "1", dayType: "ALL", timeUnit: "HOUR" });
 
-  function openNew() { setEditing(null); const karaAreas = areas.filter(a => a.type === "KARAOKE"); setForm({ name: "", areaId: karaAreas[0]?.id ?? "", startTime: "10:00", endTime: "18:00", pricePerHour: "100000", minHours: "1", dayType: "ALL", timeUnit: "HOUR" }); setOpen(true); }
+  function openNew() { setEditing(null); const firstKara = areas.find(a => a.type === "KARAOKE"); setForm({ name: "", areaId: firstKara?.id ?? "", startTime: "10:00", endTime: "18:00", pricePerHour: "100000", minHours: "1", dayType: "ALL", timeUnit: "HOUR" }); setOpen(true); }
   function openEdit(kp: KP) {
     setEditing(kp);
     setForm({ name: kp.name, areaId: kp.areaId, startTime: kp.startTime, endTime: kp.endTime, pricePerHour: kp.pricePerHour.toString(), minHours: kp.minHours.toString(), dayType: kp.dayType, timeUnit: kp.timeUnit || "HOUR" });
@@ -101,7 +103,7 @@ export function KaraokePricingManager({ pricings, areas, createKP, updateKP, del
                   </div>
                   <div>
                     <span className="text-xs text-muted-foreground">{t.settings.pricePerUnit.replace("{unit}", t.settings.timeUnits[kp.timeUnit as keyof typeof t.settings.timeUnits] || "?")}</span>
-                    <p className="font-bold text-amber-600 mt-0.5">{fmt(kp.pricePerHour)}đ</p>
+                    <p className="font-bold text-amber-600 mt-0.5">{fmt(kp.pricePerHour)}{t.common.d}</p>
                   </div>
                   <div>
                     <span className="text-xs text-muted-foreground">{t.settings.minLabel}</span>
@@ -166,7 +168,7 @@ export function KaraokePricingManager({ pricings, areas, createKP, updateKP, del
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label>{t.settings.pricePerUnit.replace("{unit}", t.settings.timeUnits[form.timeUnit as keyof typeof t.settings.timeUnits] || "?")} (₫)</Label>
+                <Label>{t.settings.pricePerUnit.replace("{unit}", t.settings.timeUnits[form.timeUnit as keyof typeof t.settings.timeUnits] || "?")} ({t.common.d})</Label>
                 <Input type="number" value={form.pricePerHour} onChange={e => setForm(f => ({ ...f, pricePerHour: e.target.value }))} />
               </div>
             </div>

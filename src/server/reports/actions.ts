@@ -4,15 +4,9 @@ import { db } from "@/lib/db";
 
 // ======================== HELPERS ========================
 
-function dayRange(date: string) {
-  const start = new Date(date);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(date);
-  end.setHours(23, 59, 59, 999);
-  return { start, end };
-}
+type ReportMode = "day" | "week" | "month" | "year" | "custom";
 
-function dateRangeByMode(mode: "day" | "week" | "month" | "year" | "custom", date?: string, startDate?: string, endDate?: string) {
+function dateRangeByMode(mode: ReportMode, date?: string, startDate?: string, endDate?: string) {
   const now = new Date();
   let start: Date;
   let end: Date;
@@ -28,10 +22,6 @@ function dateRangeByMode(mode: "day" | "week" | "month" | "year" | "custom", dat
   const d = date ? new Date(date) : now;
 
   switch (mode) {
-    case "day":
-      start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
-      end = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
-      break;
     case "week": {
       const day = d.getDay();
       const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday start
@@ -49,6 +39,7 @@ function dateRangeByMode(mode: "day" | "week" | "month" | "year" | "custom", dat
       start = new Date(d.getFullYear(), 0, 1, 0, 0, 0, 0);
       end = new Date(d.getFullYear(), 11, 31, 23, 59, 59, 999);
       break;
+    case "day":
     default:
       start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
       end = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
@@ -57,10 +48,10 @@ function dateRangeByMode(mode: "day" | "week" | "month" | "year" | "custom", dat
   return { start, end };
 }
 
-// ======================== 1. BÁO CÁO HÓA ĐƠN ========================
+// ======================== 1. INVOICE REPORT ========================
 
 export async function getInvoiceReport(mode: string, date?: string, startDate?: string, endDate?: string) {
-  const { start, end } = dateRangeByMode(mode as any, date, startDate, endDate);
+  const { start, end } = dateRangeByMode(mode as ReportMode, date, startDate, endDate);
 
   const orders = await db.order.findMany({
     where: {
@@ -92,7 +83,7 @@ export async function getInvoiceReport(mode: string, date?: string, startDate?: 
     discountAmount: o.discountAmount,
     serviceCharge: o.serviceCharge,
     totalAmount: o.totalAmount,
-    paymentMethods: o.payments.map(p => `${p.method}: ${p.amount.toLocaleString("vi-VN")}đ`).join("; "),
+    paymentMethods: o.payments.map(p => `${p.method}: ${p.amount.toLocaleString()}`).join("; "),
     staff: o.user?.name || "—",
     items: o.items.map(i => `${i.product.name} x${i.quantity}`).join(", "),
     openedAt: o.openedAt.toISOString(),
@@ -112,10 +103,10 @@ export async function getInvoiceReport(mode: string, date?: string, startDate?: 
   return { orders: mapped, summary, dateFrom: start.toISOString(), dateTo: end.toISOString() };
 }
 
-// ======================== 2. BÁO CÁO HÀNG ĐÃ BÁN ========================
+// ======================== 2. SOLD ITEMS REPORT ========================
 
 export async function getSoldItemsReport(mode: string, date?: string, startDate?: string, endDate?: string) {
-  const { start, end } = dateRangeByMode(mode as any, date, startDate, endDate);
+  const { start, end } = dateRangeByMode(mode as ReportMode, date, startDate, endDate);
 
   const items = await db.orderItem.findMany({
     where: {
@@ -168,10 +159,10 @@ export async function getSoldItemsReport(mode: string, date?: string, startDate?
   return { items: mapped, byProduct: Object.values(byProduct).sort((a, b) => b.revenue - a.revenue), summary, dateFrom: start.toISOString(), dateTo: end.toISOString() };
 }
 
-// ======================== 3. BÁO CÁO DOANH THU ========================
+// ======================== 3. REVENUE REPORT ========================
 
 export async function getRevenueReport(mode: string, date?: string, startDate?: string, endDate?: string) {
-  const { start, end } = dateRangeByMode(mode as any, date, startDate, endDate);
+  const { start, end } = dateRangeByMode(mode as ReportMode, date, startDate, endDate);
 
   const orders = await db.order.findMany({
     where: {
@@ -252,10 +243,10 @@ export async function getRevenueReport(mode: string, date?: string, startDate?: 
     totalExpenses,
     totalOtherIncome,
     profit: totalOtherIncome - totalExpenses,
-    byPaymentMethod: orders.flatMap(o => o.payments).reduce((acc, p) => {
+    byPaymentMethod: orders.flatMap(o => o.payments).reduce<Record<string, number>>((acc, p) => {
       acc[p.method] = (acc[p.method] || 0) + p.amount;
       return acc;
-    }, {} as Record<string, number>),
+    }, {}),
   };
 
   return {
@@ -269,10 +260,10 @@ export async function getRevenueReport(mode: string, date?: string, startDate?: 
   };
 }
 
-// ======================== 4. BÁO CÁO NGUYÊN LIỆU ========================
+// ======================== 4. INGREDIENTS REPORT ========================
 
 export async function getIngredientReport(mode: string, date?: string, startDate?: string, endDate?: string) {
-  const { start, end } = dateRangeByMode(mode as any, date, startDate, endDate);
+  const { start, end } = dateRangeByMode(mode as ReportMode, date, startDate, endDate);
 
   const [stockIns, stockOuts, ingredients] = await Promise.all([
     db.stockIn.findMany({
@@ -305,21 +296,21 @@ export async function getIngredientReport(mode: string, date?: string, startDate
     totalStockIns: stockIns.length,
     totalAmount: stockIns.reduce((s, si) => s + si.totalAmount, 0),
     totalItems: stockIns.reduce((s, si) => s + si.items.length, 0),
-    bySupplier: stockIns.reduce((acc, si) => {
+    bySupplier: stockIns.reduce<Record<string, number>>((acc, si) => {
       const key = si.supplier || "Unknown";
       acc[key] = (acc[key] || 0) + si.totalAmount;
       return acc;
-    }, {} as Record<string, number>),
+    }, {}),
   };
 
   const stockOutSummary = {
     totalStockOuts: stockOuts.length,
     totalQuantity: stockOuts.reduce((s, so) => s + so.quantity, 0),
     totalCost: stockOuts.reduce((s, so) => s + so.totalCost, 0),
-    byReason: stockOuts.reduce((acc, so) => {
+    byReason: stockOuts.reduce<Record<string, number>>((acc, so) => {
       acc[so.reason] = (acc[so.reason] || 0) + so.quantity;
       return acc;
-    }, {} as Record<string, number>),
+    }, {}),
   };
 
   return {
@@ -333,7 +324,7 @@ export async function getIngredientReport(mode: string, date?: string, startDate
   };
 }
 
-// ======================== 5. BÁO CÁO KHO (TỒN KHO) ========================
+// ======================== 5. WAREHOUSE REPORT ========================
 
 export async function getWarehouseReport() {
   const ingredients = await db.ingredient.findMany({

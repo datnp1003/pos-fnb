@@ -1,16 +1,18 @@
 import { PrismaClient } from "@prisma/client";
-import { PrismaLibSql } from "@prisma/adapter-libsql";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { hash } from "bcryptjs";
 
-const db = new PrismaClient({ adapter: new PrismaLibSql({ url: process.env.DATABASE_URL || "file:./prisma/dev.db" }) });
+const db = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
+});
 
 async function main() {
   console.log("🌱 Seeding POS F&B...\n");
 
   // ========== CURRENCIES ==========
-  await db.currency.upsert({ where: { code: "VND" }, update: {}, create: { code: "VND", name: "Việt Nam Đồng", symbol: "₫", rate: 1, isDefault: true, sortOrder: 1 } });
-  await db.currency.upsert({ where: { code: "USD" }, update: {}, create: { code: "USD", name: "US Dollar", symbol: "$", rate: 0.000042, isDefault: false, sortOrder: 2 } });
-  await db.currency.upsert({ where: { code: "EUR" }, update: {}, create: { code: "EUR", name: "Euro", symbol: "€", rate: 0.000038, isDefault: false, sortOrder: 3 } });
+  await db.currency.upsert({ where: { code: "BRL" }, update: {}, create: { code: "BRL", name: "Brazilian Real", symbol: "R$", rate: 1, isDefault: true, sortOrder: 1 } });
+  await db.currency.upsert({ where: { code: "USD" }, update: {}, create: { code: "USD", name: "US Dollar", symbol: "$", rate: 0.18, isDefault: false, sortOrder: 2 } });
+  await db.currency.upsert({ where: { code: "EUR" }, update: {}, create: { code: "EUR", name: "Euro", symbol: "€", rate: 0.16, isDefault: false, sortOrder: 3 } });
   console.log("✅ Currencies");
 
   // ========== ROLES ==========
@@ -23,195 +25,195 @@ async function main() {
   // ========== USERS ==========
   const hashPwd = await hash("admin123", 12);
   await db.user.upsert({ where: { username: "admin" }, update: {}, create: { username: "admin", password: hashPwd, name: "Admin", roleId: adminRole.id } });
-  await db.user.upsert({ where: { username: "cashier1" }, update: {}, create: { username: "cashier1", password: hashPwd, name: "Thu Ngân", roleId: (await db.role.findUniqueOrThrow({ where: { name: "Cashier" } })).id } });
-  await db.user.upsert({ where: { username: "waiter1" }, update: {}, create: { username: "waiter1", password: hashPwd, name: "Phục Vụ", roleId: (await db.role.findUniqueOrThrow({ where: { name: "Waiter" } })).id } });
+  await db.user.upsert({ where: { username: "cashier1" }, update: {}, create: { username: "cashier1", password: hashPwd, name: "Cashier 1", roleId: (await db.role.findUniqueOrThrow({ where: { name: "Cashier" } })).id } });
+  await db.user.upsert({ where: { username: "waiter1" }, update: {}, create: { username: "waiter1", password: hashPwd, name: "Waiter 1", roleId: (await db.role.findUniqueOrThrow({ where: { name: "Waiter" } })).id } });
   console.log("✅ Users (admin, cashier1, waiter1 / admin123)");
 
   // ========== GENERAL CONFIG ==========
-  await db.generalConfig.upsert({ where: { id: "default" }, update: {}, create: { restaurantName: "Nhà Hàng Mập", address: "123 Nguyễn Huệ, Q.1, TP.HCM", phone: "0901234567", currencyCode: "VND" } });
+  await db.generalConfig.upsert({ where: { id: "default" }, update: {}, create: { restaurantName: "My Restaurant", address: "123 Main Street", phone: "11999999999", currencyCode: "BRL" } });
   console.log("✅ Config");
 
   // ========== VAT ==========
-  const vat5 = await db.vat.upsert({ where: { code: "VAT5" }, update: {}, create: { code: "VAT5", name: "VAT 5%", rate: 0.05 } });
+  await db.vat.upsert({ where: { code: "VAT5" }, update: {}, create: { code: "VAT5", name: "VAT 5%", rate: 0.05 } });
   const vat8 = await db.vat.upsert({ where: { code: "VAT8" }, update: {}, create: { code: "VAT8", name: "VAT 8%", rate: 0.08 } });
   const vat10 = await db.vat.upsert({ where: { code: "VAT10" }, update: {}, create: { code: "VAT10", name: "VAT 10%", rate: 0.10 } });
   console.log("✅ VAT (5%, 8%, 10%)");
 
   // ========== EXCISE TAX ==========
-  await db.exciseTax.upsert({ where: { code: "NONE" }, update: {}, create: { code: "NONE", name: "Không áp dụng", rate: 0 } });
-  const exciseBeer = await db.exciseTax.upsert({ where: { code: "BEER" }, update: {}, create: { code: "BEER", name: "Rượu bia", rate: 0.65 } });
-  await db.exciseTax.upsert({ where: { code: "TOBACCO" }, update: {}, create: { code: "TOBACCO", name: "Thuốc lá", rate: 0.75 } });
+  await db.exciseTax.upsert({ where: { code: "NONE" }, update: {}, create: { code: "NONE", name: "Not Applicable", rate: 0 } });
+  const exciseBeer = await db.exciseTax.upsert({ where: { code: "BEER" }, update: {}, create: { code: "BEER", name: "Alcoholic Beverages", rate: 0.65 } });
+  await db.exciseTax.upsert({ where: { code: "TOBACCO" }, update: {}, create: { code: "TOBACCO", name: "Tobacco", rate: 0.75 } });
   console.log("✅ Excise Tax");
 
   // ========== UNITS ==========
-  const uPhan = await db.unit.upsert({ where: { name: "Phần" }, update: {}, create: { name: "Phần" } });
-  const uLy = await db.unit.upsert({ where: { name: "Ly" }, update: {}, create: { name: "Ly" } });
-  const uChai = await db.unit.upsert({ where: { name: "Chai" }, update: {}, create: { name: "Chai" } });
-  const uLon = await db.unit.upsert({ where: { name: "Lon" }, update: {}, create: { name: "Lon" } });
-  const uDia = await db.unit.upsert({ where: { name: "Dĩa" }, update: {}, create: { name: "Dĩa" } });
-  const uTo = await db.unit.upsert({ where: { name: "Tô" }, update: {}, create: { name: "Tô" } });
-  const uCai = await db.unit.upsert({ where: { name: "Cái" }, update: {}, create: { name: "Cái" } });
+  const uServing = await db.unit.upsert({ where: { name: "Serving" }, update: {}, create: { name: "Serving" } });
+  const uGlass = await db.unit.upsert({ where: { name: "Glass" }, update: {}, create: { name: "Glass" } });
+  const uBottle = await db.unit.upsert({ where: { name: "Bottle" }, update: {}, create: { name: "Bottle" } });
+  const uCan = await db.unit.upsert({ where: { name: "Can" }, update: {}, create: { name: "Can" } });
+  const uPlate = await db.unit.upsert({ where: { name: "Plate" }, update: {}, create: { name: "Plate" } });
+  const uBowl = await db.unit.upsert({ where: { name: "Bowl" }, update: {}, create: { name: "Bowl" } });
+  const uPiece = await db.unit.upsert({ where: { name: "Piece" }, update: {}, create: { name: "Piece" } });
   // Ingredient units
-  const uKg = await db.unit.upsert({ where: { name: "Kg" }, update: {}, create: { name: "Kg" } });
-  const uGam = await db.unit.upsert({ where: { name: "Gam" }, update: {}, create: { name: "Gam" } });
+  await db.unit.upsert({ where: { name: "Kg" }, update: {}, create: { name: "Kg" } });
+  const uGram = await db.unit.upsert({ where: { name: "Gram" }, update: {}, create: { name: "Gram" } });
   const uMl = await db.unit.upsert({ where: { name: "Ml" }, update: {}, create: { name: "Ml" } });
-  const uLit = await db.unit.upsert({ where: { name: "Lít" }, update: {}, create: { name: "Lít" } });
+  await db.unit.upsert({ where: { name: "Liter" }, update: {}, create: { name: "Liter" } });
   console.log("✅ Units");
 
   // ========== CATEGORIES ==========
-  const catMain = await db.category.upsert({ where: { slug: "mon-chinh" }, update: {}, create: { name: "Món chính", slug: "mon-chinh", sortOrder: 1 } });
-  const catDrink = await db.category.upsert({ where: { slug: "nuoc-uong" }, update: {}, create: { name: "Nước uống", slug: "nuoc-uong", sortOrder: 2 } });
-  const catStarter = await db.category.upsert({ where: { slug: "khai-vi" }, update: {}, create: { name: "Khai vị", slug: "khai-vi", sortOrder: 3 } });
-  const catDessert = await db.category.upsert({ where: { slug: "trang-mieng" }, update: {}, create: { name: "Tráng miệng", slug: "trang-mieng", sortOrder: 4 } });
-  const catBeer = await db.category.upsert({ where: { slug: "bia-ruou" }, update: {}, create: { name: "Bia - Rượu", slug: "bia-ruou", sortOrder: 5 } });
-  const catCoffee = await db.category.upsert({ where: { slug: "ca-phe" }, update: {}, create: { name: "Cà phê", slug: "ca-phe", sortOrder: 6 } });
-  const catLau = await db.category.upsert({ where: { slug: "lau-nuong" }, update: {}, create: { name: "Lẩu - Nướng", slug: "lau-nuong", sortOrder: 7 } });
+  const catMain = await db.category.upsert({ where: { slug: "main-course" }, update: {}, create: { name: "Main Course", slug: "main-course", sortOrder: 1 } });
+  const catDrink = await db.category.upsert({ where: { slug: "beverages" }, update: {}, create: { name: "Beverages", slug: "beverages", sortOrder: 2 } });
+  const catStarter = await db.category.upsert({ where: { slug: "starters" }, update: {}, create: { name: "Starters", slug: "starters", sortOrder: 3 } });
+  const catDessert = await db.category.upsert({ where: { slug: "desserts" }, update: {}, create: { name: "Desserts", slug: "desserts", sortOrder: 4 } });
+  const catBeer = await db.category.upsert({ where: { slug: "beer-wine" }, update: {}, create: { name: "Beer & Wine", slug: "beer-wine", sortOrder: 5 } });
+  const catCoffee = await db.category.upsert({ where: { slug: "coffee" }, update: {}, create: { name: "Coffee", slug: "coffee", sortOrder: 6 } });
+  const catGrill = await db.category.upsert({ where: { slug: "grill-hotpot" }, update: {}, create: { name: "Grill & Hotpot", slug: "grill-hotpot", sortOrder: 7 } });
   console.log("✅ Categories (7)");
 
   // ========== PRODUCTS ==========
   const products = await Promise.all([
-    // Món chính
-    db.product.upsert({ where: { slug: "com-tam-suon" }, update: {}, create: { name: "Cơm Tấm Sườn", slug: "com-tam-suon", price: 55000, costPrice: 22000, categoryId: catMain.id, vatId: vat8.id, unitId: uDia.id, sortOrder: 1 } }),
-    db.product.upsert({ where: { slug: "pho-bo" }, update: {}, create: { name: "Phở Bò Đặc Biệt", slug: "pho-bo", price: 65000, costPrice: 28000, categoryId: catMain.id, vatId: vat8.id, unitId: uTo.id, sortOrder: 2 } }),
-    db.product.upsert({ where: { slug: "bun-bo-hue" }, update: {}, create: { name: "Bún Bò Huế", slug: "bun-bo-hue", price: 55000, costPrice: 24000, categoryId: catMain.id, vatId: vat8.id, unitId: uTo.id, sortOrder: 3 } }),
-    db.product.upsert({ where: { slug: "com-ga-xoi-mo" }, update: {}, create: { name: "Cơm Gà Xối Mỡ", slug: "com-ga-xoi-mo", price: 60000, costPrice: 25000, categoryId: catMain.id, vatId: vat8.id, unitId: uDia.id, sortOrder: 4 } }),
-    db.product.upsert({ where: { slug: "mi-xao-hai-san" }, update: {}, create: { name: "Mì Xào Hải Sản", slug: "mi-xao-hai-san", price: 75000, costPrice: 35000, categoryId: catMain.id, vatId: vat8.id, unitId: uDia.id, sortOrder: 5 } }),
-    db.product.upsert({ where: { slug: "bo-luc-lac" }, update: {}, create: { name: "Bò Lúc Lắc", slug: "bo-luc-lac", price: 120000, costPrice: 60000, categoryId: catMain.id, vatId: vat8.id, unitId: uDia.id, sortOrder: 6 } }),
-    // Khai vị
-    db.product.upsert({ where: { slug: "cha-gio" }, update: {}, create: { name: "Chả Giò (4 cuốn)", slug: "cha-gio", price: 45000, costPrice: 18000, categoryId: catStarter.id, vatId: vat8.id, unitId: uPhan.id, sortOrder: 1 } }),
-    db.product.upsert({ where: { slug: "goi-cuon" }, update: {}, create: { name: "Gỏi Cuốn Tôm Thịt", slug: "goi-cuon", price: 40000, costPrice: 16000, categoryId: catStarter.id, vatId: vat8.id, unitId: uPhan.id, sortOrder: 2 } }),
-    db.product.upsert({ where: { slug: "sup-cua" }, update: {}, create: { name: "Súp Cua", slug: "sup-cua", price: 50000, costPrice: 20000, categoryId: catStarter.id, vatId: vat8.id, unitId: uTo.id, sortOrder: 3 } }),
-    // Nước uống
-    db.product.upsert({ where: { slug: "tra-da" }, update: {}, create: { name: "Trà Đá", slug: "tra-da", price: 5000, costPrice: 1000, categoryId: catDrink.id, vatId: vat8.id, unitId: uLy.id, sortOrder: 1 } }),
-    db.product.upsert({ where: { slug: "nuoc-cam-ep" }, update: {}, create: { name: "Nước Cam Ép", slug: "nuoc-cam-ep", price: 45000, costPrice: 18000, categoryId: catDrink.id, vatId: vat8.id, unitId: uLy.id, sortOrder: 2 } }),
-    db.product.upsert({ where: { slug: "nuoc-dua" }, update: {}, create: { name: "Nước Dừa Tươi", slug: "nuoc-dua", price: 35000, costPrice: 15000, categoryId: catDrink.id, vatId: vat8.id, unitId: uLy.id, sortOrder: 3 } }),
-    db.product.upsert({ where: { slug: "soda-chanh" }, update: {}, create: { name: "Soda Chanh", slug: "soda-chanh", price: 25000, costPrice: 8000, categoryId: catDrink.id, vatId: vat8.id, unitId: uLy.id, sortOrder: 4 } }),
-    // Cà phê
-    db.product.upsert({ where: { slug: "ca-phe-den" }, update: {}, create: { name: "Cà Phê Đen", slug: "ca-phe-den", price: 25000, costPrice: 8000, categoryId: catCoffee.id, vatId: vat8.id, unitId: uLy.id, sortOrder: 1 } }),
-    db.product.upsert({ where: { slug: "ca-phe-sua" }, update: {}, create: { name: "Cà Phê Sữa", slug: "ca-phe-sua", price: 30000, costPrice: 10000, categoryId: catCoffee.id, vatId: vat8.id, unitId: uLy.id, sortOrder: 2 } }),
-    db.product.upsert({ where: { slug: "bac-xiu" }, update: {}, create: { name: "Bạc Xỉu", slug: "bac-xiu", price: 30000, costPrice: 10000, categoryId: catCoffee.id, vatId: vat8.id, unitId: uLy.id, sortOrder: 3 } }),
-    // Bia - Rượu
-    db.product.upsert({ where: { slug: "bia-saigon" }, update: {}, create: { name: "Bia Sài Gòn", slug: "bia-saigon", price: 20000, costPrice: 11000, categoryId: catBeer.id, vatId: vat10.id, exciseTaxId: exciseBeer.id, unitId: uChai.id, sortOrder: 1 } }),
-    db.product.upsert({ where: { slug: "bia-heineken" }, update: {}, create: { name: "Heineken", slug: "bia-heineken", price: 30000, costPrice: 18000, categoryId: catBeer.id, vatId: vat10.id, exciseTaxId: exciseBeer.id, unitId: uChai.id, sortOrder: 2 } }),
-    db.product.upsert({ where: { slug: "bia-tiger" }, update: {}, create: { name: "Tiger", slug: "bia-tiger", price: 25000, costPrice: 15000, categoryId: catBeer.id, vatId: vat10.id, exciseTaxId: exciseBeer.id, unitId: uLon.id, sortOrder: 3 } }),
-    // Tráng miệng
-    db.product.upsert({ where: { slug: "che-ba-mau" }, update: {}, create: { name: "Chè Ba Màu", slug: "che-ba-mau", price: 25000, costPrice: 8000, categoryId: catDessert.id, vatId: vat8.id, unitId: uLy.id, sortOrder: 1 } }),
-    db.product.upsert({ where: { slug: "trai-cay-dia" }, update: {}, create: { name: "Trái Cây Đĩa", slug: "trai-cay-dia", price: 40000, costPrice: 20000, categoryId: catDessert.id, vatId: vat8.id, unitId: uDia.id, sortOrder: 2 } }),
-    // Lẩu
-    db.product.upsert({ where: { slug: "lau-thai" }, update: {}, create: { name: "Lẩu Thái", slug: "lau-thai", price: 250000, costPrice: 120000, categoryId: catLau.id, vatId: vat8.id, unitId: uPhan.id, sortOrder: 1 } }),
-    db.product.upsert({ where: { slug: "lau-bo" }, update: {}, create: { name: "Lẩu Bò", slug: "lau-bo", price: 280000, costPrice: 140000, categoryId: catLau.id, vatId: vat8.id, unitId: uPhan.id, sortOrder: 2 } }),
+    // Main Course
+    db.product.upsert({ where: { slug: "grilled-pork-rice" }, update: {}, create: { name: "Grilled Pork Rice", slug: "grilled-pork-rice", price: 55000, costPrice: 22000, categoryId: catMain.id, vatId: vat8.id, unitId: uPlate.id, sortOrder: 1 } }),
+    db.product.upsert({ where: { slug: "beef-noodle-soup" }, update: {}, create: { name: "Beef Noodle Soup", slug: "beef-noodle-soup", price: 65000, costPrice: 28000, categoryId: catMain.id, vatId: vat8.id, unitId: uBowl.id, sortOrder: 2 } }),
+    db.product.upsert({ where: { slug: "spicy-beef-noodle" }, update: {}, create: { name: "Spicy Beef Noodle", slug: "spicy-beef-noodle", price: 55000, costPrice: 24000, categoryId: catMain.id, vatId: vat8.id, unitId: uBowl.id, sortOrder: 3 } }),
+    db.product.upsert({ where: { slug: "crispy-chicken-rice" }, update: {}, create: { name: "Crispy Chicken Rice", slug: "crispy-chicken-rice", price: 60000, costPrice: 25000, categoryId: catMain.id, vatId: vat8.id, unitId: uPlate.id, sortOrder: 4 } }),
+    db.product.upsert({ where: { slug: "seafood-stir-fry-noodle" }, update: {}, create: { name: "Seafood Stir-Fry Noodle", slug: "seafood-stir-fry-noodle", price: 75000, costPrice: 35000, categoryId: catMain.id, vatId: vat8.id, unitId: uPlate.id, sortOrder: 5 } }),
+    db.product.upsert({ where: { slug: "shaking-beef" }, update: {}, create: { name: "Shaking Beef", slug: "shaking-beef", price: 120000, costPrice: 60000, categoryId: catMain.id, vatId: vat8.id, unitId: uPlate.id, sortOrder: 6 } }),
+    // Starters
+    db.product.upsert({ where: { slug: "spring-rolls" }, update: {}, create: { name: "Spring Rolls (4 pcs)", slug: "spring-rolls", price: 45000, costPrice: 18000, categoryId: catStarter.id, vatId: vat8.id, unitId: uServing.id, sortOrder: 1 } }),
+    db.product.upsert({ where: { slug: "fresh-rolls" }, update: {}, create: { name: "Fresh Shrimp Rolls", slug: "fresh-rolls", price: 40000, costPrice: 16000, categoryId: catStarter.id, vatId: vat8.id, unitId: uServing.id, sortOrder: 2 } }),
+    db.product.upsert({ where: { slug: "crab-soup" }, update: {}, create: { name: "Crab Soup", slug: "crab-soup", price: 50000, costPrice: 20000, categoryId: catStarter.id, vatId: vat8.id, unitId: uBowl.id, sortOrder: 3 } }),
+    // Beverages
+    db.product.upsert({ where: { slug: "iced-tea" }, update: {}, create: { name: "Iced Tea", slug: "iced-tea", price: 5000, costPrice: 1000, categoryId: catDrink.id, vatId: vat8.id, unitId: uGlass.id, sortOrder: 1 } }),
+    db.product.upsert({ where: { slug: "fresh-orange-juice" }, update: {}, create: { name: "Fresh Orange Juice", slug: "fresh-orange-juice", price: 45000, costPrice: 18000, categoryId: catDrink.id, vatId: vat8.id, unitId: uGlass.id, sortOrder: 2 } }),
+    db.product.upsert({ where: { slug: "fresh-coconut" }, update: {}, create: { name: "Fresh Coconut Water", slug: "fresh-coconut", price: 35000, costPrice: 15000, categoryId: catDrink.id, vatId: vat8.id, unitId: uGlass.id, sortOrder: 3 } }),
+    db.product.upsert({ where: { slug: "lemon-soda" }, update: {}, create: { name: "Lemon Soda", slug: "lemon-soda", price: 25000, costPrice: 8000, categoryId: catDrink.id, vatId: vat8.id, unitId: uGlass.id, sortOrder: 4 } }),
+    // Coffee
+    db.product.upsert({ where: { slug: "black-coffee" }, update: {}, create: { name: "Black Coffee", slug: "black-coffee", price: 25000, costPrice: 8000, categoryId: catCoffee.id, vatId: vat8.id, unitId: uGlass.id, sortOrder: 1 } }),
+    db.product.upsert({ where: { slug: "milk-coffee" }, update: {}, create: { name: "Milk Coffee", slug: "milk-coffee", price: 30000, costPrice: 10000, categoryId: catCoffee.id, vatId: vat8.id, unitId: uGlass.id, sortOrder: 2 } }),
+    db.product.upsert({ where: { slug: "white-coffee" }, update: {}, create: { name: "White Coffee", slug: "white-coffee", price: 30000, costPrice: 10000, categoryId: catCoffee.id, vatId: vat8.id, unitId: uGlass.id, sortOrder: 3 } }),
+    // Beer & Wine
+    db.product.upsert({ where: { slug: "local-beer" }, update: {}, create: { name: "Local Beer", slug: "local-beer", price: 20000, costPrice: 11000, categoryId: catBeer.id, vatId: vat10.id, exciseTaxId: exciseBeer.id, unitId: uBottle.id, sortOrder: 1 } }),
+    db.product.upsert({ where: { slug: "heineken" }, update: {}, create: { name: "Heineken", slug: "heineken", price: 30000, costPrice: 18000, categoryId: catBeer.id, vatId: vat10.id, exciseTaxId: exciseBeer.id, unitId: uBottle.id, sortOrder: 2 } }),
+    db.product.upsert({ where: { slug: "tiger-beer" }, update: {}, create: { name: "Tiger", slug: "tiger-beer", price: 25000, costPrice: 15000, categoryId: catBeer.id, vatId: vat10.id, exciseTaxId: exciseBeer.id, unitId: uCan.id, sortOrder: 3 } }),
+    // Desserts
+    db.product.upsert({ where: { slug: "mixed-pudding" }, update: {}, create: { name: "Mixed Pudding", slug: "mixed-pudding", price: 25000, costPrice: 8000, categoryId: catDessert.id, vatId: vat8.id, unitId: uGlass.id, sortOrder: 1 } }),
+    db.product.upsert({ where: { slug: "fruit-platter" }, update: {}, create: { name: "Fruit Platter", slug: "fruit-platter", price: 40000, costPrice: 20000, categoryId: catDessert.id, vatId: vat8.id, unitId: uPlate.id, sortOrder: 2 } }),
+    // Grill & Hotpot
+    db.product.upsert({ where: { slug: "thai-hotpot" }, update: {}, create: { name: "Thai Hotpot", slug: "thai-hotpot", price: 250000, costPrice: 120000, categoryId: catGrill.id, vatId: vat8.id, unitId: uServing.id, sortOrder: 1 } }),
+    db.product.upsert({ where: { slug: "beef-hotpot" }, update: {}, create: { name: "Beef Hotpot", slug: "beef-hotpot", price: 280000, costPrice: 140000, categoryId: catGrill.id, vatId: vat8.id, unitId: uServing.id, sortOrder: 2 } }),
   ]);
   console.log(`✅ Products (${products.length})`);
 
   // ========== TOPPING GROUPS ==========
   const tgSize = await db.toppingGroup.upsert({ where: { id: "tg-size" }, update: {}, create: { id: "tg-size", name: "Size", type: "SINGLE" } });
-  const tgTopping = await db.toppingGroup.upsert({ where: { id: "tg-extra" }, update: {}, create: { id: "tg-extra", name: "Thêm Topping", type: "MULTIPLE" } });
+  const tgTopping = await db.toppingGroup.upsert({ where: { id: "tg-extra" }, update: {}, create: { id: "tg-extra", name: "Extra Toppings", type: "MULTIPLE" } });
 
   // Toppings
   await db.topping.upsert({ where: { id: "top-m" }, update: {}, create: { id: "top-m", name: "Size M", price: 0, toppingGroupId: tgSize.id, sortOrder: 1 } });
   await db.topping.upsert({ where: { id: "top-l" }, update: {}, create: { id: "top-l", name: "Size L", price: 10000, toppingGroupId: tgSize.id, sortOrder: 2 } });
-  await db.topping.upsert({ where: { id: "top-bo" }, update: {}, create: { id: "top-bo", name: "Thêm bò", price: 20000, toppingGroupId: tgTopping.id, sortOrder: 1 } });
-  await db.topping.upsert({ where: { id: "top-trung" }, update: {}, create: { id: "top-trung", name: "Thêm trứng ốp la", price: 10000, toppingGroupId: tgTopping.id, sortOrder: 2 } });
+  await db.topping.upsert({ where: { id: "top-beef" }, update: {}, create: { id: "top-beef", name: "Extra Beef", price: 20000, toppingGroupId: tgTopping.id, sortOrder: 1 } });
+  await db.topping.upsert({ where: { id: "top-egg" }, update: {}, create: { id: "top-egg", name: "Fried Egg", price: 10000, toppingGroupId: tgTopping.id, sortOrder: 2 } });
   console.log("✅ Toppings");
 
-  // Link toppings to products: Phở + Bún Bò Huế
-  const pho = await db.product.findUniqueOrThrow({ where: { slug: "pho-bo" } });
-  const bun = await db.product.findUniqueOrThrow({ where: { slug: "bun-bo-hue" } });
-  for (const p of [pho, bun]) {
+  // Link toppings to products: Beef Noodle Soup + Spicy Beef Noodle
+  const beefSoup = await db.product.findUniqueOrThrow({ where: { slug: "beef-noodle-soup" } });
+  const spicyNoodle = await db.product.findUniqueOrThrow({ where: { slug: "spicy-beef-noodle" } });
+  for (const p of [beefSoup, spicyNoodle]) {
     await db.productToppingGroup.upsert({ where: { productId_toppingGroupId: { productId: p.id, toppingGroupId: tgSize.id } }, update: {}, create: { productId: p.id, toppingGroupId: tgSize.id } });
     await db.productToppingGroup.upsert({ where: { productId_toppingGroupId: { productId: p.id, toppingGroupId: tgTopping.id } }, update: {}, create: { productId: p.id, toppingGroupId: tgTopping.id } });
   }
 
   // ========== INGREDIENTS ==========
   const ingredients = await Promise.all([
-    db.ingredient.upsert({ where: { id: "ing-thit-heo" }, update: {}, create: { id: "ing-thit-heo", name: "Thịt heo", purchaseUnit: "Kg", baseUnit: "Gam", conversionFactor: 1000, currentStock: 10, minStock: 2, purchasePrice: 120000, costPerBaseUnit: 120, supplier: "Chợ Bến Thành" } }),
-    db.ingredient.upsert({ where: { id: "ing-thit-bo" }, update: {}, create: { id: "ing-thit-bo", name: "Thịt bò", purchaseUnit: "Kg", baseUnit: "Gam", conversionFactor: 1000, currentStock: 8, minStock: 1.5, purchasePrice: 280000, costPerBaseUnit: 280, supplier: "Chợ Bến Thành" } }),
-    db.ingredient.upsert({ where: { id: "ing-ga" }, update: {}, create: { id: "ing-ga", name: "Thịt gà", purchaseUnit: "Kg", baseUnit: "Gam", conversionFactor: 1000, currentStock: 6, minStock: 1, purchasePrice: 90000, costPerBaseUnit: 90, supplier: "CP" } }),
-    db.ingredient.upsert({ where: { id: "ing-tom" }, update: {}, create: { id: "ing-tom", name: "Tôm sú", purchaseUnit: "Kg", baseUnit: "Gam", conversionFactor: 1000, currentStock: 3, minStock: 0.5, purchasePrice: 320000, costPerBaseUnit: 320, supplier: "Hải Sản Nha Trang" } }),
-    db.ingredient.upsert({ where: { id: "ing-com" }, update: {}, create: { id: "ing-com", name: "Gạo tấm", purchaseUnit: "Kg", baseUnit: "Gam", conversionFactor: 1000, currentStock: 25, minStock: 5, purchasePrice: 20000, costPerBaseUnit: 20, supplier: "Đại lý gạo" } }),
-    db.ingredient.upsert({ where: { id: "ing-banh-pho" }, update: {}, create: { id: "ing-banh-pho", name: "Bánh phở", purchaseUnit: "Kg", baseUnit: "Gam", conversionFactor: 1000, currentStock: 8, minStock: 1, purchasePrice: 25000, costPerBaseUnit: 25 } }),
-    db.ingredient.upsert({ where: { id: "ing-bun" }, update: {}, create: { id: "ing-bun", name: "Bún tươi", purchaseUnit: "Kg", baseUnit: "Gam", conversionFactor: 1000, currentStock: 6, minStock: 1, purchasePrice: 18000, costPerBaseUnit: 18 } }),
-    db.ingredient.upsert({ where: { id: "ing-mi" }, update: {}, create: { id: "ing-mi", name: "Mì trứng", purchaseUnit: "Kg", baseUnit: "Gam", conversionFactor: 1000, currentStock: 5, minStock: 1, purchasePrice: 30000, costPerBaseUnit: 30 } }),
-    db.ingredient.upsert({ where: { id: "ing-trung" }, update: {}, create: { id: "ing-trung", name: "Trứng gà", purchaseUnit: "Chục", baseUnit: "Cái", conversionFactor: 10, currentStock: 60, minStock: 10, purchasePrice: 45000, costPerBaseUnit: 4500, supplier: "Trứng Ba Huân" } }),
-    db.ingredient.upsert({ where: { id: "ing-rau-thom" }, update: {}, create: { id: "ing-rau-thom", name: "Rau thơm các loại", purchaseUnit: "Kg", baseUnit: "Gam", conversionFactor: 1000, currentStock: 3, minStock: 0.5, purchasePrice: 40000, costPerBaseUnit: 40, supplier: "Chợ Bến Thành" } }),
-    db.ingredient.upsert({ where: { id: "ing-gia-vi" }, update: {}, create: { id: "ing-gia-vi", name: "Gia vị tổng hợp", purchaseUnit: "Kg", baseUnit: "Gam", conversionFactor: 1000, currentStock: 5, minStock: 1, purchasePrice: 100000, costPerBaseUnit: 100 } }),
-    db.ingredient.upsert({ where: { id: "ing-ca-phe" }, update: {}, create: { id: "ing-ca-phe", name: "Cà phê hạt", purchaseUnit: "Kg", baseUnit: "Gam", conversionFactor: 1000, currentStock: 5, minStock: 1, purchasePrice: 200000, costPerBaseUnit: 200 } }),
-    db.ingredient.upsert({ where: { id: "ing-sua-dac" }, update: {}, create: { id: "ing-sua-dac", name: "Sữa đặc", purchaseUnit: "Thùng", baseUnit: "Lon", conversionFactor: 48, currentStock: 96, minStock: 12, purchasePrice: 720000, costPerBaseUnit: 15000 } }),
-    db.ingredient.upsert({ where: { id: "ing-duong" }, update: {}, create: { id: "ing-duong", name: "Đường cát", purchaseUnit: "Kg", baseUnit: "Gam", conversionFactor: 1000, currentStock: 10, minStock: 2, purchasePrice: 22000, costPerBaseUnit: 22 } }),
-    db.ingredient.upsert({ where: { id: "ing-cam" }, update: {}, create: { id: "ing-cam", name: "Cam tươi", purchaseUnit: "Kg", baseUnit: "Gam", conversionFactor: 1000, currentStock: 8, minStock: 2, purchasePrice: 50000, costPerBaseUnit: 50, supplier: "Trái cây nhập" } }),
-    db.ingredient.upsert({ where: { id: "ing-dau-an" }, update: {}, create: { id: "ing-dau-an", name: "Dầu ăn", purchaseUnit: "Lít", baseUnit: "Ml", conversionFactor: 1000, currentStock: 10, minStock: 2, purchasePrice: 55000, costPerBaseUnit: 55 } }),
+    db.ingredient.upsert({ where: { id: "ing-pork" }, update: {}, create: { id: "ing-pork", name: "Pork", purchaseUnit: "Kg", baseUnit: "Gram", conversionFactor: 1000, currentStock: 10, minStock: 2, purchasePrice: 120000, costPerBaseUnit: 120, supplier: "Local Market" } }),
+    db.ingredient.upsert({ where: { id: "ing-beef" }, update: {}, create: { id: "ing-beef", name: "Beef", purchaseUnit: "Kg", baseUnit: "Gram", conversionFactor: 1000, currentStock: 8, minStock: 1.5, purchasePrice: 280000, costPerBaseUnit: 280, supplier: "Local Market" } }),
+    db.ingredient.upsert({ where: { id: "ing-chicken" }, update: {}, create: { id: "ing-chicken", name: "Chicken", purchaseUnit: "Kg", baseUnit: "Gram", conversionFactor: 1000, currentStock: 6, minStock: 1, purchasePrice: 90000, costPerBaseUnit: 90, supplier: "Farm Direct" } }),
+    db.ingredient.upsert({ where: { id: "ing-shrimp" }, update: {}, create: { id: "ing-shrimp", name: "Shrimp", purchaseUnit: "Kg", baseUnit: "Gram", conversionFactor: 1000, currentStock: 3, minStock: 0.5, purchasePrice: 320000, costPerBaseUnit: 320, supplier: "Seafood Market" } }),
+    db.ingredient.upsert({ where: { id: "ing-rice" }, update: {}, create: { id: "ing-rice", name: "Rice", purchaseUnit: "Kg", baseUnit: "Gram", conversionFactor: 1000, currentStock: 25, minStock: 5, purchasePrice: 20000, costPerBaseUnit: 20, supplier: "Rice Supplier" } }),
+    db.ingredient.upsert({ where: { id: "ing-rice-noodle" }, update: {}, create: { id: "ing-rice-noodle", name: "Rice Noodle", purchaseUnit: "Kg", baseUnit: "Gram", conversionFactor: 1000, currentStock: 8, minStock: 1, purchasePrice: 25000, costPerBaseUnit: 25 } }),
+    db.ingredient.upsert({ where: { id: "ing-vermicelli" }, update: {}, create: { id: "ing-vermicelli", name: "Vermicelli", purchaseUnit: "Kg", baseUnit: "Gram", conversionFactor: 1000, currentStock: 6, minStock: 1, purchasePrice: 18000, costPerBaseUnit: 18 } }),
+    db.ingredient.upsert({ where: { id: "ing-egg-noodle" }, update: {}, create: { id: "ing-egg-noodle", name: "Egg Noodle", purchaseUnit: "Kg", baseUnit: "Gram", conversionFactor: 1000, currentStock: 5, minStock: 1, purchasePrice: 30000, costPerBaseUnit: 30 } }),
+    db.ingredient.upsert({ where: { id: "ing-egg" }, update: {}, create: { id: "ing-egg", name: "Eggs", purchaseUnit: "Dozen", baseUnit: "Piece", conversionFactor: 12, currentStock: 60, minStock: 10, purchasePrice: 45000, costPerBaseUnit: 3750, supplier: "Egg Farm" } }),
+    db.ingredient.upsert({ where: { id: "ing-herbs" }, update: {}, create: { id: "ing-herbs", name: "Fresh Herbs", purchaseUnit: "Kg", baseUnit: "Gram", conversionFactor: 1000, currentStock: 3, minStock: 0.5, purchasePrice: 40000, costPerBaseUnit: 40, supplier: "Local Market" } }),
+    db.ingredient.upsert({ where: { id: "ing-spices" }, update: {}, create: { id: "ing-spices", name: "Mixed Spices", purchaseUnit: "Kg", baseUnit: "Gram", conversionFactor: 1000, currentStock: 5, minStock: 1, purchasePrice: 100000, costPerBaseUnit: 100 } }),
+    db.ingredient.upsert({ where: { id: "ing-coffee" }, update: {}, create: { id: "ing-coffee", name: "Coffee Beans", purchaseUnit: "Kg", baseUnit: "Gram", conversionFactor: 1000, currentStock: 5, minStock: 1, purchasePrice: 200000, costPerBaseUnit: 200 } }),
+    db.ingredient.upsert({ where: { id: "ing-condensed-milk" }, update: {}, create: { id: "ing-condensed-milk", name: "Condensed Milk", purchaseUnit: "Case", baseUnit: "Can", conversionFactor: 48, currentStock: 96, minStock: 12, purchasePrice: 720000, costPerBaseUnit: 15000 } }),
+    db.ingredient.upsert({ where: { id: "ing-sugar" }, update: {}, create: { id: "ing-sugar", name: "Sugar", purchaseUnit: "Kg", baseUnit: "Gram", conversionFactor: 1000, currentStock: 10, minStock: 2, purchasePrice: 22000, costPerBaseUnit: 22 } }),
+    db.ingredient.upsert({ where: { id: "ing-orange" }, update: {}, create: { id: "ing-orange", name: "Fresh Oranges", purchaseUnit: "Kg", baseUnit: "Gram", conversionFactor: 1000, currentStock: 8, minStock: 2, purchasePrice: 50000, costPerBaseUnit: 50, supplier: "Fruit Supplier" } }),
+    db.ingredient.upsert({ where: { id: "ing-cooking-oil" }, update: {}, create: { id: "ing-cooking-oil", name: "Cooking Oil", purchaseUnit: "Liter", baseUnit: "Ml", conversionFactor: 1000, currentStock: 10, minStock: 2, purchasePrice: 55000, costPerBaseUnit: 55 } }),
   ]);
   console.log(`✅ Ingredients (${ingredients.length})`);
 
-  // ========== RECIPES (Định lượng món) ==========
+  // ========== RECIPES ==========
   const recipeData: { productSlug: string; items: { ingredientId: string; quantity: number; unitId: string }[] }[] = [
-    { productSlug: "com-tam-suon", items: [
-      { ingredientId: "ing-thit-heo", quantity: 200, unitId: uGam.id },
-      { ingredientId: "ing-com", quantity: 250, unitId: uGam.id },
-      { ingredientId: "ing-trung", quantity: 1, unitId: uCai.id },
-      { ingredientId: "ing-gia-vi", quantity: 10, unitId: uGam.id },
-      { ingredientId: "ing-dau-an", quantity: 15, unitId: uMl.id },
+    { productSlug: "grilled-pork-rice", items: [
+      { ingredientId: "ing-pork", quantity: 200, unitId: uGram.id },
+      { ingredientId: "ing-rice", quantity: 250, unitId: uGram.id },
+      { ingredientId: "ing-egg", quantity: 1, unitId: uPiece.id },
+      { ingredientId: "ing-spices", quantity: 10, unitId: uGram.id },
+      { ingredientId: "ing-cooking-oil", quantity: 15, unitId: uMl.id },
     ]},
-    { productSlug: "pho-bo", items: [
-      { ingredientId: "ing-thit-bo", quantity: 150, unitId: uGam.id },
-      { ingredientId: "ing-banh-pho", quantity: 200, unitId: uGam.id },
-      { ingredientId: "ing-rau-thom", quantity: 30, unitId: uGam.id },
-      { ingredientId: "ing-gia-vi", quantity: 15, unitId: uGam.id },
+    { productSlug: "beef-noodle-soup", items: [
+      { ingredientId: "ing-beef", quantity: 150, unitId: uGram.id },
+      { ingredientId: "ing-rice-noodle", quantity: 200, unitId: uGram.id },
+      { ingredientId: "ing-herbs", quantity: 30, unitId: uGram.id },
+      { ingredientId: "ing-spices", quantity: 15, unitId: uGram.id },
     ]},
-    { productSlug: "bun-bo-hue", items: [
-      { ingredientId: "ing-thit-bo", quantity: 120, unitId: uGam.id },
-      { ingredientId: "ing-thit-heo", quantity: 80, unitId: uGam.id },
-      { ingredientId: "ing-bun", quantity: 200, unitId: uGam.id },
-      { ingredientId: "ing-gia-vi", quantity: 15, unitId: uGam.id },
+    { productSlug: "spicy-beef-noodle", items: [
+      { ingredientId: "ing-beef", quantity: 120, unitId: uGram.id },
+      { ingredientId: "ing-pork", quantity: 80, unitId: uGram.id },
+      { ingredientId: "ing-vermicelli", quantity: 200, unitId: uGram.id },
+      { ingredientId: "ing-spices", quantity: 15, unitId: uGram.id },
     ]},
-    { productSlug: "com-ga-xoi-mo", items: [
-      { ingredientId: "ing-ga", quantity: 250, unitId: uGam.id },
-      { ingredientId: "ing-com", quantity: 250, unitId: uGam.id },
-      { ingredientId: "ing-dau-an", quantity: 20, unitId: uMl.id },
-      { ingredientId: "ing-gia-vi", quantity: 10, unitId: uGam.id },
+    { productSlug: "crispy-chicken-rice", items: [
+      { ingredientId: "ing-chicken", quantity: 250, unitId: uGram.id },
+      { ingredientId: "ing-rice", quantity: 250, unitId: uGram.id },
+      { ingredientId: "ing-cooking-oil", quantity: 20, unitId: uMl.id },
+      { ingredientId: "ing-spices", quantity: 10, unitId: uGram.id },
     ]},
-    { productSlug: "mi-xao-hai-san", items: [
-      { ingredientId: "ing-tom", quantity: 100, unitId: uGam.id },
-      { ingredientId: "ing-mi", quantity: 200, unitId: uGam.id },
-      { ingredientId: "ing-rau-thom", quantity: 20, unitId: uGam.id },
-      { ingredientId: "ing-dau-an", quantity: 20, unitId: uMl.id },
-      { ingredientId: "ing-gia-vi", quantity: 10, unitId: uGam.id },
+    { productSlug: "seafood-stir-fry-noodle", items: [
+      { ingredientId: "ing-shrimp", quantity: 100, unitId: uGram.id },
+      { ingredientId: "ing-egg-noodle", quantity: 200, unitId: uGram.id },
+      { ingredientId: "ing-herbs", quantity: 20, unitId: uGram.id },
+      { ingredientId: "ing-cooking-oil", quantity: 20, unitId: uMl.id },
+      { ingredientId: "ing-spices", quantity: 10, unitId: uGram.id },
     ]},
-    { productSlug: "bo-luc-lac", items: [
-      { ingredientId: "ing-thit-bo", quantity: 300, unitId: uGam.id },
-      { ingredientId: "ing-dau-an", quantity: 25, unitId: uMl.id },
-      { ingredientId: "ing-gia-vi", quantity: 15, unitId: uGam.id },
+    { productSlug: "shaking-beef", items: [
+      { ingredientId: "ing-beef", quantity: 300, unitId: uGram.id },
+      { ingredientId: "ing-cooking-oil", quantity: 25, unitId: uMl.id },
+      { ingredientId: "ing-spices", quantity: 15, unitId: uGram.id },
     ]},
-    { productSlug: "cha-gio", items: [
-      { ingredientId: "ing-thit-heo", quantity: 150, unitId: uGam.id },
-      { ingredientId: "ing-tom", quantity: 50, unitId: uGam.id },
-      { ingredientId: "ing-dau-an", quantity: 30, unitId: uMl.id },
-      { ingredientId: "ing-gia-vi", quantity: 10, unitId: uGam.id },
+    { productSlug: "spring-rolls", items: [
+      { ingredientId: "ing-pork", quantity: 150, unitId: uGram.id },
+      { ingredientId: "ing-shrimp", quantity: 50, unitId: uGram.id },
+      { ingredientId: "ing-cooking-oil", quantity: 30, unitId: uMl.id },
+      { ingredientId: "ing-spices", quantity: 10, unitId: uGram.id },
     ]},
-    { productSlug: "goi-cuon", items: [
-      { ingredientId: "ing-tom", quantity: 60, unitId: uGam.id },
-      { ingredientId: "ing-thit-heo", quantity: 80, unitId: uGam.id },
-      { ingredientId: "ing-rau-thom", quantity: 20, unitId: uGam.id },
+    { productSlug: "fresh-rolls", items: [
+      { ingredientId: "ing-shrimp", quantity: 60, unitId: uGram.id },
+      { ingredientId: "ing-pork", quantity: 80, unitId: uGram.id },
+      { ingredientId: "ing-herbs", quantity: 20, unitId: uGram.id },
     ]},
-    { productSlug: "sup-cua", items: [
-      { ingredientId: "ing-tom", quantity: 50, unitId: uGam.id },
-      { ingredientId: "ing-trung", quantity: 1, unitId: uCai.id },
-      { ingredientId: "ing-gia-vi", quantity: 10, unitId: uGam.id },
+    { productSlug: "crab-soup", items: [
+      { ingredientId: "ing-shrimp", quantity: 50, unitId: uGram.id },
+      { ingredientId: "ing-egg", quantity: 1, unitId: uPiece.id },
+      { ingredientId: "ing-spices", quantity: 10, unitId: uGram.id },
     ]},
-    { productSlug: "nuoc-cam-ep", items: [
-      { ingredientId: "ing-cam", quantity: 300, unitId: uGam.id },
-      { ingredientId: "ing-duong", quantity: 10, unitId: uGam.id },
+    { productSlug: "fresh-orange-juice", items: [
+      { ingredientId: "ing-orange", quantity: 300, unitId: uGram.id },
+      { ingredientId: "ing-sugar", quantity: 10, unitId: uGram.id },
     ]},
-    { productSlug: "ca-phe-den", items: [
-      { ingredientId: "ing-ca-phe", quantity: 25, unitId: uGam.id },
+    { productSlug: "black-coffee", items: [
+      { ingredientId: "ing-coffee", quantity: 25, unitId: uGram.id },
     ]},
-    { productSlug: "ca-phe-sua", items: [
-      { ingredientId: "ing-ca-phe", quantity: 25, unitId: uGam.id },
-      { ingredientId: "ing-sua-dac", quantity: 0.05, unitId: uLon.id },
+    { productSlug: "milk-coffee", items: [
+      { ingredientId: "ing-coffee", quantity: 25, unitId: uGram.id },
+      { ingredientId: "ing-condensed-milk", quantity: 0.05, unitId: uCan.id },
     ]},
-    { productSlug: "bac-xiu", items: [
-      { ingredientId: "ing-ca-phe", quantity: 15, unitId: uGam.id },
-      { ingredientId: "ing-sua-dac", quantity: 0.08, unitId: uLon.id },
+    { productSlug: "white-coffee", items: [
+      { ingredientId: "ing-coffee", quantity: 15, unitId: uGram.id },
+      { ingredientId: "ing-condensed-milk", quantity: 0.08, unitId: uCan.id },
     ]},
   ];
 
@@ -233,28 +235,28 @@ async function main() {
   console.log(`✅ Recipes (${recipeData.length} products)`);
 
   // ========== AREAS & TABLES ==========
-  const areaT1 = await db.area.upsert({ where: { id: "area-tang1" }, update: { type: "RESTAURANT" }, create: { id: "area-tang1", name: "Tầng 1", type: "RESTAURANT", sortOrder: 1 } });
-  const areaT2 = await db.area.upsert({ where: { id: "area-tang2" }, update: { type: "RESTAURANT" }, create: { id: "area-tang2", name: "Tầng 2", type: "RESTAURANT", sortOrder: 2 } });
-  const areaSan = await db.area.upsert({ where: { id: "area-san-thuong" }, update: { type: "RESTAURANT" }, create: { id: "area-san-thuong", name: "Sân Thượng", type: "RESTAURANT", sortOrder: 3 } });
-  const areaVIP = await db.area.upsert({ where: { id: "area-vip" }, update: { type: "RESTAURANT" }, create: { id: "area-vip", name: "Phòng VIP", type: "RESTAURANT", sortOrder: 4 } });
-  const areaTakeaway = await db.area.upsert({ where: { id: "area-takeaway" }, update: {}, create: { id: "area-takeaway", name: "Mang Đi", type: "TAKEAWAY", sortOrder: 5 } });
+  const areaFloor1 = await db.area.upsert({ where: { id: "area-floor1" }, update: { type: "RESTAURANT" }, create: { id: "area-floor1", name: "Floor 1", type: "RESTAURANT", sortOrder: 1 } });
+  const areaFloor2 = await db.area.upsert({ where: { id: "area-floor2" }, update: { type: "RESTAURANT" }, create: { id: "area-floor2", name: "Floor 2", type: "RESTAURANT", sortOrder: 2 } });
+  const areaTerrace = await db.area.upsert({ where: { id: "area-terrace" }, update: { type: "RESTAURANT" }, create: { id: "area-terrace", name: "Terrace", type: "RESTAURANT", sortOrder: 3 } });
+  const areaVIP = await db.area.upsert({ where: { id: "area-vip" }, update: { type: "RESTAURANT" }, create: { id: "area-vip", name: "VIP Room", type: "RESTAURANT", sortOrder: 4 } });
+  const areaTakeaway = await db.area.upsert({ where: { id: "area-takeaway" }, update: {}, create: { id: "area-takeaway", name: "Takeaway", type: "TAKEAWAY", sortOrder: 5 } });
 
-  // Tầng 1: bàn B01-B10
+  // Floor 1: tables T01-T10
   for (let i = 1; i <= 10; i++) {
-    const name = `B${String(i).padStart(2, "0")}`;
+    const name = `T${String(i).padStart(2, "0")}`;
     const cap = [2, 4, 4, 6, 2, 4, 8, 4, 2, 6][i - 1];
-    await db.table.upsert({ where: { id: `t-${name}` }, update: {}, create: { id: `t-${name}`, name, areaId: areaT1.id, capacity: cap } });
+    await db.table.upsert({ where: { id: `t-${name}` }, update: {}, create: { id: `t-${name}`, name, areaId: areaFloor1.id, capacity: cap } });
   }
-  // Tầng 2: bàn B11-B18
+  // Floor 2: tables T11-T18
   for (let i = 11; i <= 18; i++) {
-    const name = `B${String(i).padStart(2, "0")}`;
+    const name = `T${String(i).padStart(2, "0")}`;
     const cap = [4, 6, 4, 8, 4, 2, 4, 6][i - 11];
-    await db.table.upsert({ where: { id: `t-${name}` }, update: {}, create: { id: `t-${name}`, name, areaId: areaT2.id, capacity: cap } });
+    await db.table.upsert({ where: { id: `t-${name}` }, update: {}, create: { id: `t-${name}`, name, areaId: areaFloor2.id, capacity: cap } });
   }
-  // Sân Thượng: S01-S06
+  // Terrace: S01-S06
   for (let i = 1; i <= 6; i++) {
     const name = `S${String(i).padStart(2, "0")}`;
-    await db.table.upsert({ where: { id: `t-${name}` }, update: {}, create: { id: `t-${name}`, name, areaId: areaSan.id, capacity: 4 } });
+    await db.table.upsert({ where: { id: `t-${name}` }, update: {}, create: { id: `t-${name}`, name, areaId: areaTerrace.id, capacity: 4 } });
   }
   // VIP: V01-V04
   for (let i = 1; i <= 4; i++) {
@@ -266,18 +268,18 @@ async function main() {
   console.log("✅ Areas (5) & Tables (29)");
 
   // ========== PAYMENT METHODS ==========
-  await db.paymentMethod.upsert({ where: { code: "CASH" }, update: {}, create: { name: "Tiền mặt", code: "CASH", sortOrder: 1 } });
-  await db.paymentMethod.upsert({ where: { code: "BANK_TRANSFER" }, update: {}, create: { name: "Chuyển khoản", code: "BANK_TRANSFER", sortOrder: 2 } });
-  await db.paymentMethod.upsert({ where: { code: "MOMO" }, update: {}, create: { name: "Momo", code: "MOMO", sortOrder: 3 } });
+  await db.paymentMethod.upsert({ where: { code: "CASH" }, update: {}, create: { name: "Cash", code: "CASH", sortOrder: 1 } });
+  await db.paymentMethod.upsert({ where: { code: "CARD" }, update: {}, create: { name: "Credit/Debit Card", code: "CARD", sortOrder: 2 } });
+  await db.paymentMethod.upsert({ where: { code: "PIX" }, update: {}, create: { name: "PIX", code: "PIX", sortOrder: 3 } });
   console.log("✅ Payment Methods");
 
   // ========== CASH FLOW CATEGORIES ==========
-  await db.cashFlowCategory.upsert({ where: { id: "inc-sales" }, update: {}, create: { id: "inc-sales", name: "Doanh thu bán hàng", type: "INCOME", sortOrder: 1 } });
-  await db.cashFlowCategory.upsert({ where: { id: "inc-other" }, update: {}, create: { id: "inc-other", name: "Thu khác", type: "INCOME", sortOrder: 2 } });
-  await db.cashFlowCategory.upsert({ where: { id: "exp-stock" }, update: {}, create: { id: "exp-stock", name: "Nhập nguyên liệu", type: "EXPENSE", sortOrder: 1 } });
-  await db.cashFlowCategory.upsert({ where: { id: "exp-salary" }, update: {}, create: { id: "exp-salary", name: "Lương nhân viên", type: "EXPENSE", sortOrder: 2 } });
-  await db.cashFlowCategory.upsert({ where: { id: "exp-rent" }, update: {}, create: { id: "exp-rent", name: "Mặt bằng", type: "EXPENSE", sortOrder: 3 } });
-  await db.cashFlowCategory.upsert({ where: { id: "exp-other" }, update: {}, create: { id: "exp-other", name: "Chi khác", type: "EXPENSE", sortOrder: 4 } });
+  await db.cashFlowCategory.upsert({ where: { id: "inc-sales" }, update: {}, create: { id: "inc-sales", name: "Sales Revenue", type: "INCOME", sortOrder: 1 } });
+  await db.cashFlowCategory.upsert({ where: { id: "inc-other" }, update: {}, create: { id: "inc-other", name: "Other Income", type: "INCOME", sortOrder: 2 } });
+  await db.cashFlowCategory.upsert({ where: { id: "exp-stock" }, update: {}, create: { id: "exp-stock", name: "Inventory Purchase", type: "EXPENSE", sortOrder: 1 } });
+  await db.cashFlowCategory.upsert({ where: { id: "exp-salary" }, update: {}, create: { id: "exp-salary", name: "Staff Salary", type: "EXPENSE", sortOrder: 2 } });
+  await db.cashFlowCategory.upsert({ where: { id: "exp-rent" }, update: {}, create: { id: "exp-rent", name: "Rent", type: "EXPENSE", sortOrder: 3 } });
+  await db.cashFlowCategory.upsert({ where: { id: "exp-other" }, update: {}, create: { id: "exp-other", name: "Other Expenses", type: "EXPENSE", sortOrder: 4 } });
   console.log("✅ Cash Flow Categories");
 
   // ========== SYSTEM MODULES ==========
@@ -287,13 +289,12 @@ async function main() {
   console.log("✅ System Modules");
 
   // ========== SERVICE CHARGES ==========
-  // Phí dịch vụ mặc định (luôn áp dụng)
   await db.serviceCharge.upsert({
     where: { id: "sc-service-fee" },
     update: {},
     create: {
       id: "sc-service-fee",
-      name: "Phí phục vụ",
+      name: "Service Fee",
       type: "SERVICE_FEE",
       value: 5,
       scope: "ALL",
@@ -301,13 +302,12 @@ async function main() {
       isActive: true,
     },
   });
-  // Phụ thu ngày Tết
   await db.serviceCharge.upsert({
     where: { id: "sc-holiday" },
     update: {},
     create: {
       id: "sc-holiday",
-      name: "Phụ thu ngày Tết",
+      name: "Holiday Surcharge",
       type: "FIXED",
       value: 5000,
       scope: "ALL",
@@ -315,36 +315,36 @@ async function main() {
       isActive: true,
     },
   });
-  console.log("✅ Service Charges (Phí phục vụ 5% + Phụ thu Tết 5k)");
+  console.log("✅ Service Charges (Service Fee 5% + Holiday Surcharge)");
 
   // ========== HOLIDAYS ==========
   const holidays = [
-    { name: "Tết Dương Lịch", date: "2026-01-01" },
-    { name: "Tết Nguyên Đán (mùng 1)", date: "2026-01-29" },
-    { name: "Tết Nguyên Đán (mùng 2)", date: "2026-01-30" },
-    { name: "Tết Nguyên Đán (mùng 3)", date: "2026-01-31" },
-    { name: "Tết Nguyên Đán (mùng 4)", date: "2026-02-01" },
-    { name: "Tết Nguyên Đán (mùng 5)", date: "2026-02-02" },
-    { name: "Giỗ Tổ Hùng Vương", date: "2026-04-06" },
-    { name: "Giải phóng miền Nam (30/4)", date: "2026-04-30" },
-    { name: "Quốc tế Lao động (1/5)", date: "2026-05-01" },
-    { name: "Quốc khánh (2/9)", date: "2026-09-02" },
-    { name: "Quốc khánh (nghỉ bù)", date: "2026-09-03" },
+    { name: "New Year's Day", date: "2026-01-01" },
+    { name: "Carnival Monday", date: "2026-02-16" },
+    { name: "Carnival Tuesday", date: "2026-02-17" },
+    { name: "Good Friday", date: "2026-04-03" },
+    { name: "Tiradentes Day", date: "2026-04-21" },
+    { name: "Labour Day", date: "2026-05-01" },
+    { name: "Corpus Christi", date: "2026-06-04" },
+    { name: "Independence Day", date: "2026-09-07" },
+    { name: "Our Lady of Aparecida", date: "2026-10-12" },
+    { name: "All Souls' Day", date: "2026-11-02" },
+    { name: "Christmas Day", date: "2026-12-25" },
   ];
   for (const h of holidays) {
     await db.holiday.upsert({ where: { date: new Date(h.date) }, update: {}, create: { ...h, date: new Date(h.date) } });
   }
-  console.log("✅ Holidays (11 ngày lễ)");
+  console.log("✅ Holidays (11 days)");
 
   // ========== SUMMARY ==========
   console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log("🎉 Seed hoàn tất!");
+  console.log("🎉 Seed complete!");
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   console.log("   👤 admin / admin123");
-  console.log(`   🍽️  ${products.length} món ăn`);
-  console.log(`   📦  ${ingredients.length} nguyên liệu`);
-  console.log(`   📋  ${recipeData.length} định lượng món`);
-  console.log(`   🏠  5 khu vực, 29 bàn`);
+  console.log(`   🍽️  ${products.length} products`);
+  console.log(`   📦  ${ingredients.length} ingredients`);
+  console.log(`   📋  ${recipeData.length} recipes`);
+  console.log(`   🏠  5 areas, 29 tables`);
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 }
 

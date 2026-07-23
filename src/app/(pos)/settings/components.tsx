@@ -27,22 +27,37 @@ interface ModuleDef {
 }
 
 const MODULES: ModuleDef[] = [
-  { key: "order", label: "Bán hàng", icon: ShoppingBag, color: "blue" },
-  { key: "dashboard", label: "Tổng quan", icon: LayoutDashboard, color: "emerald" },
-  { key: "inventory", label: "Kho", icon: ClipboardList, color: "amber" },
-  { key: "cash", label: "Thu chi", icon: DollarSign, color: "green" },
-  { key: "reports", label: "Báo cáo", icon: BarChart3, color: "purple" },
-  { key: "settings", label: "Cài đặt", icon: Settings2, color: "gray" },
-  { key: "kds", label: "Màn bếp", icon: Tv, color: "red" },
+  { key: "order", label: "Sales", icon: ShoppingBag, color: "blue" },
+  { key: "dashboard", label: "Dashboard", icon: LayoutDashboard, color: "emerald" },
+  { key: "inventory", label: "Inventory", icon: ClipboardList, color: "amber" },
+  { key: "cash", label: "Cash", icon: DollarSign, color: "green" },
+  { key: "reports", label: "Reports", icon: BarChart3, color: "purple" },
+  { key: "settings", label: "Settings", icon: Settings2, color: "gray" },
+  { key: "kds", label: "KDS", icon: Tv, color: "red" },
   { key: "karaoke", label: "Karaoke", icon: Music, color: "pink" },
 ];
 
 const ACTIONS: { key: ActionKey; label: string; short: string }[] = [
-  { key: "view", label: "Xem", short: "X" },
-  { key: "create", label: "Thêm", short: "T" },
-  { key: "edit", label: "Sửa", short: "S" },
-  { key: "delete", label: "Xóa", short: "Xo" },
+  { key: "view", label: "View", short: "V" },
+  { key: "create", label: "Create", short: "C" },
+  { key: "edit", label: "Edit", short: "E" },
+  { key: "delete", label: "Delete", short: "D" },
 ];
+
+const ALL_ACTIONS: ActionKey[] = ["view", "create", "edit", "delete"];
+
+function addPermissionEntry(p: string, result: Record<string, ActionKey[]>) {
+  const sep = Math.max(p.lastIndexOf("."), p.lastIndexOf(":"));
+  if (sep < 0) return;
+  const moduleKey = p.substring(0, sep);
+  const action = p.substring(sep + 1);
+  if (action === "*") {
+    result[moduleKey] = [...ALL_ACTIONS];
+  } else if ((ALL_ACTIONS as string[]).includes(action)) {
+    if (!result[moduleKey]) result[moduleKey] = [];
+    if (!result[moduleKey].includes(action as ActionKey)) result[moduleKey].push(action as ActionKey);
+  }
+}
 
 function parsePermissions(permissions: string): Record<string, ActionKey[]> {
   try {
@@ -51,20 +66,10 @@ function parsePermissions(permissions: string): Record<string, ActionKey[]> {
     const result: Record<string, ActionKey[]> = {};
     for (const p of arr) {
       if (p === "*") {
-        for (const m of MODULES) result[m.key] = ["view", "create", "edit", "delete"];
+        for (const m of MODULES) result[m.key] = [...ALL_ACTIONS];
         return result;
       }
-      const dot = p.lastIndexOf(".");
-      const colon = p.lastIndexOf(":");
-      const sep = Math.max(dot, colon);
-      if (sep < 0) continue;
-      const moduleKey = p.substring(0, sep);
-      const action = p.substring(sep + 1);
-      if (action === "*") { result[moduleKey] = ["view", "create", "edit", "delete"]; }
-      else if (["view", "create", "edit", "delete"].includes(action)) {
-        if (!result[moduleKey]) result[moduleKey] = [];
-        if (!result[moduleKey].includes(action as ActionKey)) result[moduleKey].push(action as ActionKey);
-      }
+      addPermissionEntry(p, result);
     }
     return result;
   } catch { return {}; }
@@ -72,9 +77,7 @@ function parsePermissions(permissions: string): Record<string, ActionKey[]> {
 
 function serializePermissions(perms: Record<string, ActionKey[]>): string {
   const allModules = MODULES.map(m => m.key);
-  const hasAll = allModules.every(m => {
-    const a = perms[m]; return a && a.length === 4;
-  });
+  const hasAll = allModules.every(m => perms[m]?.length === 4);
   if (hasAll) return JSON.stringify(["*"]);
   const arr: string[] = [];
   for (const [moduleKey, actions] of Object.entries(perms)) {
@@ -94,7 +97,7 @@ function serializeScopes(modules: string[]): string {
   return JSON.stringify(modules);
 }
 
-export function UsersManager({ users, roles }: { users: User[]; roles: Role[] }) {
+export function UsersManager({ users, roles }: { readonly users: readonly User[]; readonly roles: readonly Role[] }) {
   const { t } = useI18n();
   const [activeTab, setActiveTab] = useState("users");
   const [openUserSheet, setOpenUserSheet] = useState(false);
@@ -153,7 +156,7 @@ export function UsersManager({ users, roles }: { users: User[]; roles: Role[] })
       if (editingUser) {
         await updateUser(editingUser.id, { name: userForm.name, roleId: userForm.roleId, ...(userForm.password ? { password: userForm.password } : {}) });
       } else {
-        await createUser(userForm as any);
+        await createUser(userForm as Parameters<typeof createUser>[0]);
       }
       toast.success(t.common.success);
       setOpenUserSheet(false);
@@ -216,6 +219,28 @@ export function UsersManager({ users, roles }: { users: User[]; roles: Role[] })
               const scopes = parseScopes(r.scopes || "[]");
               const userCount = users.filter(u => u.roleId === r.id).length;
               const isFull = Object.keys(perms).length > 0 && Object.values(perms).every(a => a.length === 4);
+              let roleContent: React.ReactNode;
+              if (isFull) {
+                roleContent = <Badge className="bg-amber-100 text-amber-800 text-xs">{t.settings.permissionAll}</Badge>;
+              } else if (scopes.length > 0) {
+                const colorMap: Record<string, string> = { blue: "bg-blue-100 text-blue-700", emerald: "bg-emerald-100 text-emerald-700", amber: "bg-amber-100 text-amber-700", green: "bg-green-100 text-green-700", purple: "bg-purple-100 text-purple-700", gray: "bg-gray-100 text-gray-700", red: "bg-red-100 text-red-700", pink: "bg-pink-100 text-pink-700" };
+                roleContent = (
+                  <div className="flex flex-wrap gap-1">
+                    {scopes.map(s => {
+                      const mod = MODULES.find(m => m.key === s);
+                      const IconComponent = mod?.icon || Shield;
+                      return (
+                        <span key={s} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium ${colorMap[s] || "bg-gray-100 text-gray-700"}`}>
+                          <IconComponent className="h-3 w-3" />
+                          {mod?.label || s}
+                        </span>
+                      );
+                    })}
+                  </div>
+                );
+              } else {
+                roleContent = <p className="text-xs text-muted-foreground italic">{t.settings.noPermission}</p>;
+              }
               return (
                 <Card key={r.id} className="hover:shadow-md transition-shadow cursor-pointer group" onClick={() => openEditRole(r)}>
                   <CardHeader className="pb-2">
@@ -230,27 +255,7 @@ export function UsersManager({ users, roles }: { users: User[]; roles: Role[] })
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent>
-                    {isFull ? (
-                      <Badge className="bg-amber-100 text-amber-800 text-xs">{t.settings.permissionAll}</Badge>
-                    ) : scopes.length > 0 ? (
-                      <div className="flex flex-wrap gap-1">
-                        {scopes.map(s => {
-                          const mod = MODULES.find(m => m.key === s);
-                          const IconComponent = mod?.icon || Shield;
-                          const colorMap: Record<string, string> = { blue: "bg-blue-100 text-blue-700", emerald: "bg-emerald-100 text-emerald-700", amber: "bg-amber-100 text-amber-700", green: "bg-green-100 text-green-700", purple: "bg-purple-100 text-purple-700", gray: "bg-gray-100 text-gray-700", red: "bg-red-100 text-red-700", pink: "bg-pink-100 text-pink-700" };
-                          return (
-                            <span key={s} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium ${colorMap[s] || "bg-gray-100 text-gray-700"}`}>
-                              <IconComponent className="h-3 w-3" />
-                              {mod?.label || s}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground italic">{t.settings.noPermission}</p>
-                    )}
-                  </CardContent>
+                  <CardContent>{roleContent}</CardContent>
                 </Card>
               );
             })}

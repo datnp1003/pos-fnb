@@ -2,9 +2,11 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { compare } from "bcryptjs";
 import { db } from "./db";
+import authConfig from "./auth.config";
 import "./auth-types";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  ...authConfig,
   providers: [
     Credentials({
       credentials: {
@@ -38,28 +40,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
     }),
   ],
-  callbacks: {
-    async jwt({ token, user }) {
-      if (user) {
-        token.id = user.id!;
-        token.username = user.username!;
-        token.role = user.role!;
-        token.permissions = user.permissions!;
-        token.scopes = user.scopes!;
-      }
-      return token;
-    },
-    async session({ session, token }) {
-      if (session.user) {
-        session.user.id = token.id!;
-        session.user.username = token.username!;
-        session.user.role = token.role!;
-        session.user.permissions = token.permissions!;
-        session.user.scopes = token.scopes!;
-      }
-      return session;
-    },
-  },
   events: {
     async signIn({ user }) {
       try {
@@ -69,12 +49,4 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       } catch { /* silent */ }
     },
   },
-  session: {
-    strategy: "jwt",
-  },
-  pages: {
-    signIn: "/login",
-  },
-  secret: process.env.AUTH_SECRET,
-  trustHost: true,
 });

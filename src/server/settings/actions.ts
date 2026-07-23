@@ -1,7 +1,23 @@
 "use server";
 
 import { db } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import { revalidatePath, revalidateTag } from "next/cache";
+import { makeCrud } from "./_crud";
+
+const addSortOrder = (data: Record<string, unknown>) => ({
+  ...data,
+  sortOrder: data.sortOrder ?? 0,
+});
+
+const roleCrud = makeCrud({ model: db.role, path: "/settings/users" });
+const categoryCrud = makeCrud({ model: db.category, path: "/settings/categories", prepareCreate: addSortOrder });
+const unitCrud = makeCrud({ model: db.unit, path: "/settings/units" });
+const areaCrud = makeCrud({ model: db.area, path: "/settings/areas", prepareCreate: addSortOrder });
+const shiftCrud = makeCrud({ model: db.shift, path: "/settings/shifts" });
+const paymentMethodCrud = makeCrud({ model: db.paymentMethod, path: "/settings/payment-methods", prepareCreate: addSortOrder });
+const toppingGroupCrud = makeCrud({ model: db.toppingGroup, path: "/settings/toppings" });
+const toppingCrud = makeCrud({ model: db.topping, path: "/settings/toppings", prepareCreate: addSortOrder });
 
 // ============ General Config ============
 export async function getGeneralConfig() {
@@ -55,12 +71,12 @@ export async function updateUser(id: string, data: {
   roleId?: string;
   password?: string;
 }) {
-  const update: any = { ...data };
+  const update: Record<string, unknown> = { ...data };
   if (data.password) {
     const { hash } = await import("bcryptjs");
     update.password = await hash(data.password, 12);
   } else delete update.password;
-  await db.user.update({ where: { id }, data: update });
+  await db.user.update({ where: { id }, data: update as Prisma.UserUpdateInput });
   revalidatePath("/settings/users");
 }
 
@@ -71,18 +87,15 @@ export async function deleteUser(id: string) {
 
 // ============ Roles ============
 export async function createRole(data: { name: string; permissions: string }) {
-  await db.role.create({ data });
-  revalidatePath("/settings/users");
+  return roleCrud.create(data);
 }
 
 export async function updateRole(id: string, data: { name?: string; permissions?: string; scopes?: string }) {
-  await db.role.update({ where: { id }, data });
-  revalidatePath("/settings/users");
+  return roleCrud.update(id, data);
 }
 
 export async function deleteRole(id: string) {
-  await db.role.delete({ where: { id } });
-  revalidatePath("/settings/users");
+  return roleCrud.remove(id);
 }
 
 // ============ Categories ============
@@ -94,18 +107,15 @@ export async function getCategories() {
 }
 
 export async function createCategory(data: { name: string; slug: string; sortOrder?: number; imageUrl?: string }) {
-  await db.category.create({ data: { ...data, sortOrder: data.sortOrder ?? 0 } });
-  revalidatePath("/settings/categories");
+  return categoryCrud.create(data);
 }
 
 export async function updateCategory(id: string, data: { name?: string; slug?: string; sortOrder?: number }) {
-  await db.category.update({ where: { id }, data });
-  revalidatePath("/settings/categories");
+  return categoryCrud.update(id, data);
 }
 
 export async function deleteCategory(id: string) {
-  await db.category.delete({ where: { id } });
-  revalidatePath("/settings/categories");
+  return categoryCrud.remove(id);
 }
 
 // ============ VAT ============
@@ -134,18 +144,15 @@ export async function getUnits() {
 }
 
 export async function createUnit(data: { name: string }) {
-  await db.unit.create({ data });
-  revalidatePath("/settings/units");
+  return unitCrud.create(data);
 }
 
 export async function updateUnit(id: string, data: { name: string }) {
-  await db.unit.update({ where: { id }, data });
-  revalidatePath("/settings/units");
+  return unitCrud.update(id, data);
 }
 
 export async function deleteUnit(id: string) {
-  await db.unit.delete({ where: { id } });
-  revalidatePath("/settings/units");
+  return unitCrud.remove(id);
 }
 
 // ============ Areas ============
@@ -160,18 +167,15 @@ export async function getAreas() {
 }
 
 export async function createArea(data: { name: string; type: string; sortOrder?: number }) {
-  await db.area.create({ data: { ...data, sortOrder: data.sortOrder ?? 0 } });
-  revalidatePath("/settings/areas");
+  return areaCrud.create(data);
 }
 
 export async function updateArea(id: string, data: { name?: string; type?: string; sortOrder?: number }) {
-  await db.area.update({ where: { id }, data });
-  revalidatePath("/settings/areas");
+  return areaCrud.update(id, data);
 }
 
 export async function deleteArea(id: string) {
-  await db.area.delete({ where: { id } });
-  revalidatePath("/settings/areas");
+  return areaCrud.remove(id);
 }
 
 // ============ Tables ============
@@ -206,14 +210,14 @@ export async function updateTable(id: string, data: {
   isKaraoke?: boolean;
   karaokePricingId?: string | null;
 }) {
-  const clean: Record<string, any> = {};
+  const clean: Record<string, unknown> = {};
   if (data.name !== undefined) clean.name = data.name;
   if (data.capacity !== undefined) clean.capacity = Number(data.capacity);
   if (data.positionX !== undefined) clean.positionX = Number(data.positionX);
   if (data.positionY !== undefined) clean.positionY = Number(data.positionY);
   if (data.isKaraoke !== undefined) clean.isKaraoke = data.isKaraoke;
   if (data.karaokePricingId !== undefined) clean.karaokePricingId = data.karaokePricingId || null;
-  await db.table.update({ where: { id }, data: clean });
+  await db.table.update({ where: { id }, data: clean as Prisma.TableUpdateInput });
   revalidatePath("/settings/areas");
 }
 
@@ -231,18 +235,15 @@ export async function getShifts() {
 }
 
 export async function createShift(data: { name: string; startTime: string; endTime: string }) {
-  await db.shift.create({ data });
-  revalidatePath("/settings/shifts");
+  return shiftCrud.create(data);
 }
 
 export async function updateShift(id: string, data: { name?: string; startTime?: string; endTime?: string }) {
-  await db.shift.update({ where: { id }, data });
-  revalidatePath("/settings/shifts");
+  return shiftCrud.update(id, data);
 }
 
 export async function deleteShift(id: string) {
-  await db.shift.delete({ where: { id } });
-  revalidatePath("/settings/shifts");
+  return shiftCrud.remove(id);
 }
 
 // ============ Printers ============
@@ -309,18 +310,15 @@ export async function getPaymentMethods() {
 }
 
 export async function createPaymentMethod(data: { name: string; code: string; sortOrder?: number }) {
-  await db.paymentMethod.create({ data: { ...data, sortOrder: data.sortOrder ?? 0 } });
-  revalidatePath("/settings/payment-methods");
+  return paymentMethodCrud.create(data);
 }
 
 export async function updatePaymentMethod(id: string, data: { name?: string; isActive?: boolean }) {
-  await db.paymentMethod.update({ where: { id }, data });
-  revalidatePath("/settings/payment-methods");
+  return paymentMethodCrud.update(id, data);
 }
 
 export async function deletePaymentMethod(id: string) {
-  await db.paymentMethod.delete({ where: { id } });
-  revalidatePath("/settings/payment-methods");
+  return paymentMethodCrud.remove(id);
 }
 
 // ============ System Modules ============
@@ -329,8 +327,8 @@ export async function getSystemModules() {
 }
 
 export async function isSystemModuleEnabled(name: string) {
-  const module = await db.systemModule.findUnique({ where: { name } });
-  return module?.enabled ?? false;
+  const mod = await db.systemModule.findUnique({ where: { name } });
+  return mod?.enabled ?? false;
 }
 
 export async function toggleModule(id: string, enabled: boolean) {
@@ -365,8 +363,8 @@ export async function createKaraokePricing(data: {
   revalidatePath("/settings/karaoke");
 }
 
-export async function updateKaraokePricing(id: string, data: any) {
-  await db.karaokePricing.update({ where: { id }, data });
+export async function updateKaraokePricing(id: string, data: Record<string, unknown>) {
+  await db.karaokePricing.update({ where: { id }, data: data as Prisma.KaraokePricingUpdateInput });
   revalidatePath("/settings/karaoke");
 }
 
@@ -402,8 +400,8 @@ export async function createProduct(data: {
   revalidatePath("/settings/products");
 }
 
-export async function updateProduct(id: string, data: any) {
-  await db.product.update({ where: { id }, data });
+export async function updateProduct(id: string, data: Record<string, unknown>) {
+  await db.product.update({ where: { id }, data: data as Prisma.ProductUpdateInput });
   revalidatePath("/settings/products");
 }
 
@@ -461,16 +459,16 @@ export async function createIngredient(data: {
   revalidatePath("/settings/ingredients");
 }
 
-export async function updateIngredient(id: string, data: any) {
+export async function updateIngredient(id: string, data: Record<string, unknown>) {
   if (data.purchasePrice !== undefined || data.conversionFactor !== undefined) {
     const item = await db.ingredient.findUnique({ where: { id } });
     if (item) {
-      const factor = data.conversionFactor ?? item.conversionFactor;
-      const price = data.purchasePrice ?? item.purchasePrice;
+      const factor = (data.conversionFactor ?? item.conversionFactor) as number;
+      const price = (data.purchasePrice ?? item.purchasePrice) as number;
       data.costPerBaseUnit = factor > 0 ? price / factor : 0;
     }
   }
-  await db.ingredient.update({ where: { id }, data });
+  await db.ingredient.update({ where: { id }, data: data as Prisma.IngredientUpdateInput });
   revalidatePath("/settings/ingredients");
 }
 
@@ -488,33 +486,27 @@ export async function getToppingGroups() {
 }
 
 export async function createToppingGroup(data: { name: string; type: string }) {
-  await db.toppingGroup.create({ data });
-  revalidatePath("/settings/toppings");
+  return toppingGroupCrud.create(data);
 }
 
 export async function updateToppingGroup(id: string, data: { name?: string; type?: string }) {
-  await db.toppingGroup.update({ where: { id }, data });
-  revalidatePath("/settings/toppings");
+  return toppingGroupCrud.update(id, data);
 }
 
 export async function deleteToppingGroup(id: string) {
-  await db.toppingGroup.delete({ where: { id } });
-  revalidatePath("/settings/toppings");
+  return toppingGroupCrud.remove(id);
 }
 
 export async function createTopping(data: { name: string; price: number; toppingGroupId: string; sortOrder?: number }) {
-  await db.topping.create({ data: { ...data, sortOrder: data.sortOrder ?? 0 } });
-  revalidatePath("/settings/toppings");
+  return toppingCrud.create(data);
 }
 
 export async function updateTopping(id: string, data: { name?: string; price?: number }) {
-  await db.topping.update({ where: { id }, data });
-  revalidatePath("/settings/toppings");
+  return toppingCrud.update(id, data);
 }
 
 export async function deleteTopping(id: string) {
-  await db.topping.delete({ where: { id } });
-  revalidatePath("/settings/toppings");
+  return toppingCrud.remove(id);
 }
 
 // ============ Discounts ============
@@ -555,8 +547,8 @@ export async function createDiscount(data: {
   revalidatePath("/settings/discounts");
 }
 
-export async function updateDiscount(id: string, data: any) {
-  await db.discount.update({ where: { id }, data });
+export async function updateDiscount(id: string, data: Record<string, unknown>) {
+  await db.discount.update({ where: { id }, data: data as Prisma.DiscountUpdateInput });
   revalidatePath("/settings/discounts");
 }
 
@@ -606,8 +598,8 @@ export async function createServiceCharge(data: {
   revalidatePath("/settings/service-charges");
 }
 
-export async function updateServiceCharge(id: string, data: any) {
-  await db.serviceCharge.update({ where: { id }, data });
+export async function updateServiceCharge(id: string, data: Record<string, unknown>) {
+  await db.serviceCharge.update({ where: { id }, data: data as Prisma.ServiceChargeUpdateInput });
   revalidatePath("/settings/service-charges");
 }
 
@@ -641,12 +633,12 @@ export async function createPrintTemplate(data: {
   revalidatePath("/settings/print-templates");
 }
 
-export async function updatePrintTemplate(id: string, data: any) {
+export async function updatePrintTemplate(id: string, data: Record<string, unknown>) {
   if (data.isDefault) {
     const tpl = await db.printTemplate.findUnique({ where: { id } });
     if (tpl) await db.printTemplate.updateMany({ where: { type: tpl.type }, data: { isDefault: false } });
   }
-  await db.printTemplate.update({ where: { id }, data });
+  await db.printTemplate.update({ where: { id }, data: data as Prisma.PrintTemplateUpdateInput });
   revalidatePath("/settings/print-templates");
 }
 

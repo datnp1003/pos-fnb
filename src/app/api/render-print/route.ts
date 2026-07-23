@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
       success: result.success,
       error: result.error,
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: "Failed to render print" }, { status: 500 });
   }
 }

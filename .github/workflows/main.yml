@@ -1,0 +1,537 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  NEXT_TELEMETRY_DISABLED: 1
+
+permissions:
+  contents: read
+
+jobs:
+  # ─── Lint ──────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint (ESLint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Cache node_modules
+        id: cache-node
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        if: steps.cache-node.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint -- --format json --output-file eslint-report.json || true
+
+      - name: Upload ESLint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eslint-report
+          path: eslint-report.json
+
+  # ─── Unit Tests ────────────────────────────────────────────────────────────
+  unit:
+    name: Unit Tests (Vitest)
+    runs-on: ubuntu-latest
+    env:
+      AUTH_SECRET: ci-secret-not-used
+      AUTH_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Cache node_modules
+        id: cache-node
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        if: steps.cache-node.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Cache Prisma Client
+        id: cache-prisma
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.prisma
+          key: prisma-${{ runner.os }}-${{ hashFiles('prisma/schema.prisma') }}
+
+      - name: Generate Prisma Client
+        if: steps.cache-prisma.outputs.cache-hit != 'true'
+        run: npx prisma generate
+
+      - name: Run tests with coverage
+        run: npm run test:coverage
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/lcov.info
+
+  # ─── Fail-fast ───────────────────────────────────────────────────────────────
+  # Aborts the whole run as soon as a fast check (lint/unit) fails, so the long
+  # build/integration/load jobs don't keep burning minutes. Cross-job fail-fast is
+  # not native outside matrices, so we cancel the run explicitly.
+  fail-fast:
+    name: Cancel run on early failure
+    runs-on: ubuntu-latest
+    needs: [lint, unit]
+    if: failure()
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel in-progress run
+        run: gh run cancel "${{ github.run_id }}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  # Stops the still-running sibling (load ⇄ integration) the moment one of them fails.
+  fail-fast-integration:
+    name: Cancel run if integration fails
+    runs-on: ubuntu-latest
+    needs: [integration]
+    if: failure()
+    permissions:
+      actions: write
+    steps:
+      - run: gh run cancel "${{ github.run_id }}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  fail-fast-load:
+    name: Cancel run if load fails
+    runs-on: ubuntu-latest
+    needs: [load]
+    if: failure()
+    permissions:
+      actions: write
+    steps:
+      - run: gh run cancel "${{ github.run_id }}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  # ─── SonarQube Scan ────────────────────────────────────────────────────────
+  sonar:
+    name: SonarQube Analysis
+    runs-on: ubuntu-latest
+    needs: [lint, unit]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download ESLint report
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: eslint-report
+
+      - name: Download coverage report
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage
+
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+
+  # ─── Build ──────────────────────────────────────────────────────────────────
+  build:
+    name: Build (Dockerfile)
+    runs-on: ubuntu-latest
+    needs: [lint, unit]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Dockerfile builder stage
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          target: builder
+          load: true
+          tags: pos-fnb:builder
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract standalone build
+        run: |
+          container_id="$(docker create pos-fnb:builder)"
+          mkdir -p .next
+          docker cp "$container_id:/app/.next/standalone" .next/standalone
+          docker cp "$container_id:/app/.next/static" .next/static
+          docker cp "$container_id:/app/public" public
+          docker rm "$container_id"
+
+      - name: Upload standalone build
+        uses: actions/upload-artifact@v4
+        with:
+          name: next-standalone-build
+          include-hidden-files: true
+          retention-days: 1
+          path: |
+            .next/standalone
+            .next/static
+            public
+
+  # ─── Integration Tests ──────────────────────────────────────────────────────
+  integration:
+    name: Integration Test (Postgres + NextAuth)
+    runs-on: ubuntu-latest
+    needs: [build]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postest
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postest
+      AUTH_SECRET: ci-integration-test-secret
+      AUTH_URL: http://localhost:3000
+      NEXTAUTH_URL: http://localhost:3000
+      BASE_URL: http://localhost:3000
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Cache node_modules
+        id: cache-node
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        if: steps.cache-node.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Apply schema and seed
+        run: |
+          npx prisma db push --accept-data-loss
+          npx tsx prisma/seed.ts
+
+      - name: Download standalone build
+        uses: actions/download-artifact@v4
+        with:
+          name: next-standalone-build
+
+      - name: Copy static assets into standalone
+        run: |
+          mkdir -p .next/standalone/.next/static && cp -a .next/static/. .next/standalone/.next/static/
+          mkdir -p .next/standalone/public && cp -a public/. .next/standalone/public/
+
+      - name: Start standalone server
+        run: node .next/standalone/server.js &
+
+      - name: Wait for server
+        run: |
+          for i in $(seq 1 20); do
+            curl -sf http://localhost:3000/login && break
+            echo "Waiting for server... ($i)"
+            if [ "$i" -eq 20 ]; then
+              echo "Server failed to start after 60s"
+              exit 1
+            fi
+            sleep 3
+          done
+
+      - name: Run integration smoke
+        run: npm run test:integration
+
+      - name: Run order module integration tests
+        run: npm run test:integration:db
+
+  # ─── Load Test (k6) ────────────────────────────────────────────────────────
+  load:
+    name: Load Test (k6)
+    runs-on: ubuntu-latest
+    needs: [build]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postest
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postest
+      AUTH_SECRET: ci-load-test-secret
+      AUTH_URL: http://localhost:3000
+      NEXTAUTH_URL: http://localhost:3000
+      BASE_URL: http://localhost:3000
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      LOAD_TEST_PROFILE: ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Cache node_modules
+        id: cache-node
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        if: steps.cache-node.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Cache Prisma Client
+        id: cache-prisma
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.prisma
+          key: prisma-${{ runner.os }}-${{ hashFiles('prisma/schema.prisma') }}
+
+      - name: Generate Prisma Client
+        if: steps.cache-prisma.outputs.cache-hit != 'true'
+        run: npx prisma generate
+
+      - name: Apply schema and seed
+        run: |
+          npx prisma db push --accept-data-loss
+          npx tsx prisma/seed.ts
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring \
+            --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+            --keyserver hkp://keyserver.ubuntu.com:80 \
+            --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
+            | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install -y k6
+
+      - name: Download standalone build
+        uses: actions/download-artifact@v4
+        with:
+          name: next-standalone-build
+
+      - name: Copy static assets into standalone
+        run: |
+          mkdir -p .next/standalone/.next/static && cp -a .next/static/. .next/standalone/.next/static/
+          mkdir -p .next/standalone/public && cp -a public/. .next/standalone/public/
+
+      - name: Start standalone server
+        run: node .next/standalone/server.js &
+
+      - name: Wait for server
+        run: |
+          for i in $(seq 1 20); do
+            curl -sf http://localhost:3000/login && break
+            echo "Waiting for server... ($i)"
+            if [ "$i" -eq 20 ]; then
+              echo "Server failed to start after 60s"
+              exit 1
+            fi
+            sleep 3
+          done
+
+      - name: Run k6 load test
+        run: k6 run --out json=k6-results.json k6/load-test.js
+        env:
+          BASE_URL: http://localhost:3000
+          LOAD_TEST_USER: admin
+          LOAD_TEST_PASS: admin123
+
+      - name: Upload k6 results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-results
+          path: k6-results.json
+
+  # ─── Browser Load Test (k6/browser) ────────────────────────────────────────
+  # Roda um Chromium real e exercita o fluxo completo do POS:
+  # login → abrir mesa → adicionar produto → enviar cozinha → checkout.
+  # Isso é o que o teste HTTP não consegue cobrir (Server Actions, hidratação React).
+  browser-load:
+    name: Browser Load Test (k6/browser)
+    runs-on: ubuntu-latest
+    needs: [build]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postest
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postest
+      AUTH_SECRET: ci-browser-test-secret
+      AUTH_URL: http://localhost:3000
+      NEXTAUTH_URL: http://localhost:3000
+      BASE_URL: http://localhost:3000
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      LOAD_TEST_PROFILE: ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Cache node_modules
+        id: cache-node
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        if: steps.cache-node.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Apply schema and seed
+        run: |
+          npx prisma db push --accept-data-loss
+          npx tsx prisma/seed.ts
+
+      - name: Install k6 with browser support
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring \
+            --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+            --keyserver hkp://keyserver.ubuntu.com:80 \
+            --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
+            | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install -y k6
+          # Chromium + Xvfb (display virtual) para o k6/browser no runner headless
+          sudo apt-get install -y chromium-browser xvfb
+
+      - name: Download standalone build
+        uses: actions/download-artifact@v4
+        with:
+          name: next-standalone-build
+
+      # O standalone server.js espera .next/static e public relativos
+      # ao seu próprio diretório — exatamente como o Dockerfile runner stage faz.
+      # Sem isso, os bundles JS retornam 404 e React nunca hidrata no browser.
+      - name: Copy static assets into standalone
+        run: |
+          mkdir -p .next/standalone/.next/static && cp -a .next/static/. .next/standalone/.next/static/
+          mkdir -p .next/standalone/public && cp -a public/. .next/standalone/public/
+
+      - name: Start standalone server
+        run: node .next/standalone/server.js &
+
+      - name: Wait for server
+        run: |
+          for i in $(seq 1 20); do
+            curl -sf http://localhost:3000/login && break
+            echo "Waiting for server... ($i)"
+            if [ "$i" -eq 20 ]; then
+              echo "Server failed to start after 60s"
+              exit 1
+            fi
+            sleep 3
+          done
+
+      - name: Start Xvfb (display virtual para o Chromium)
+        run: Xvfb :99 -screen 0 1280x800x24 &
+
+      - name: Run k6 browser test
+        run: k6 run --out json=k6-browser-results.json k6/browser-test.js
+        env:
+          BASE_URL: http://localhost:3000
+          LOAD_TEST_USER: admin
+          LOAD_TEST_PASS: admin123
+          DISPLAY: ":99"
+          K6_BROWSER_ARGS: --no-sandbox,--disable-dev-shm-usage
+
+      - name: Upload k6 browser results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-browser-results
+          path: k6-browser-results.json
+
+  fail-fast-browser:
+    name: Cancel run if browser load fails
+    runs-on: ubuntu-latest
+    needs: [browser-load]
+    if: failure()
+    permissions:
+      actions: write
+    steps:
+      - run: gh run cancel "${{ github.run_id }}"
+        env:
+          GH_TOKEN: ${{ github.token }}

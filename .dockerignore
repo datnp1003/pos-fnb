@@ -1,0 +1,62 @@
+# .dockerignore
+# Exclui arquivos desnecessários do contexto de build do Docker.
+# Isso reduz o tamanho do contexto enviado ao daemon e acelera o build.
+
+# ----- Dependências (instaladas dentro do container) -----
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ----- Build outputs -----
+.next
+out
+build
+
+# ----- Git -----
+.git
+.gitignore
+.github
+
+# ----- Banco de dados local -----
+prisma/dev.db
+prisma/dev.db-journal
+prisma/*.db
+prisma/*.db-journal
+prisma/*.db.bak*
+
+# ----- Variáveis de ambiente (NUNCA deve entrar na imagem) -----
+.env
+.env.local
+.env.development
+.env.production
+.env.staging
+
+# ----- Arquivos de desenvolvimento -----
+*.log
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# ----- Ferramentas de qualidade de código -----
+.eslintcache
+
+# ----- Documentação e assets de dev -----
+docs
+screenshots
+screenshot.cjs
+README.md
+CHANGELOG.md
+CLAUDE.md
+AGENTS.md
+LICENSE
+
+# ----- Docker (evita copiar o próprio arquivo) -----
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# ----- IDE e sistema operacional -----
+.DS_Store
+.vscode
+.idea
+Thumbs.db

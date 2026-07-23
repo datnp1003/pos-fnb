@@ -23,7 +23,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/settings", icon: Settings, labelKey: "settings", module: "settings" },
 ];
 
-export function MobileBottomNav({ enabledModules }: { enabledModules: Set<string> }) {
+export function MobileBottomNav({ enabledModules }: Readonly<{ enabledModules: Set<string> }>) {
   const pathname = usePathname();
   const { t } = useI18n();
   const { canAccessModule } = usePermission();
@@ -49,7 +49,7 @@ export function MobileBottomNav({ enabledModules }: { enabledModules: Set<string
               href={item.href}
               aria-disabled={!visible}
               className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-all duration-200 active:scale-95 touch-manipulation ${
-                !visible ? "opacity-30 pointer-events-none" : ""
+                visible ? "" : "opacity-30 pointer-events-none"
               } ${
                 active ? "text-amber-600" : "text-gray-400 hover:text-gray-600"
               }`}

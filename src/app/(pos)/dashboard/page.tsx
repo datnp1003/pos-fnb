@@ -8,18 +8,24 @@ import {
 } from "lucide-react";
 import { useI18n } from "@/i18n/context";
 import { useDeviceInfo } from "@/components/shared/device-provider";
-import { LanguageSwitcher } from "@/i18n/language-switcher";
 import { getDashboardStats } from "@/server/dashboard/actions";
 
 type Stats = Awaited<ReturnType<typeof getDashboardStats>>;
 
 const fmt = (v: number) => new Intl.NumberFormat("vi-VN").format(v);
 
+function getDateLocale(loc: string): string {
+  if (loc === "pt") return "pt-BR";
+  if (loc === "en") return "en-US";
+  return "vi-VN";
+}
+
 export default function DashboardPage() {
   const { t, locale } = useI18n();
   const { isMobile } = useDeviceInfo();
   const [stats, setStats] = useState<Stats | null>(null);
-  const [pending, start] = useTransition();
+  const [, start] = useTransition();
+  const dateLocale = getDateLocale(locale);
 
   const moduleKeys = ["sales", "inventory", "cash", "reports", "settings"] as const;
   const moduleIcons = [ClipboardList, Package, DollarSign, BarChart3, Settings];
@@ -37,7 +43,7 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className={`${isMobile ? "text-xl" : "text-2xl"} font-bold text-gray-900`}>{t.dashboard.title}</h1>
-          <p className="text-sm text-gray-500 mt-1">{new Date().toLocaleDateString(locale === "vi" ? "vi-VN" : locale === "en" ? "en-US" : locale === "zh" ? "zh-CN" : locale === "ko" ? "ko-KR" : "ja-JP", { day: "numeric", month: "long", year: "numeric" })}</p>
+          <p className="text-sm text-gray-500 mt-1">{new Date().toLocaleDateString(dateLocale, { day: "numeric", month: "long", year: "numeric" })}</p>
         </div>
         {!isMobile && (
           <Link href="/order" className="btn-pos-primary">
@@ -54,7 +60,7 @@ export default function DashboardPage() {
           </div>
           <div>
             <p className="text-xs font-medium text-gray-500">{t.dashboard.revenue} {t.dashboard.today.toLowerCase()}</p>
-            <p className="text-xl font-bold text-gray-900">{stats ? fmt(stats.revenue) + "đ" : "—"}</p>
+            <p className="text-xl font-bold text-gray-900">{stats ? fmt(stats.revenue) + (t.common.d || "") : "—"}</p>
           </div>
         </div>
         <div className="stat-card">
@@ -118,7 +124,7 @@ export default function DashboardPage() {
               <p className="text-sm text-gray-400 text-center py-8">{t.dashboard.noActivity}</p>
             )}
             {stats?.timeline.map((item, i) => (
-              <div key={i} className="relative pl-8">
+              <div key={item.id} className="relative pl-8">
                 <div className="absolute left-0 top-0 w-5 h-5 rounded-full flex items-center justify-center border-[3px] border-white" style={{ backgroundColor: item.color + "20" }}>
                   <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
                 </div>
@@ -128,7 +134,7 @@ export default function DashboardPage() {
                     <p className="text-sm font-medium text-gray-900">{item.label}</p>
                     <p className="text-xs text-gray-400 mt-0.5">{item.time} {t.dashboard.ago}</p>
                   </div>
-                  <p className="text-sm font-semibold" style={{ color: item.color }}>{fmt(item.amount)}đ</p>
+                  <p className="text-sm font-semibold" style={{ color: item.color }}>{fmt(item.amount)}{t.common.d || ""}</p>
                 </div>
               </div>
             ))}

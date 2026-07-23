@@ -5,7 +5,7 @@ import { DeviceInfo, useDevice } from "@/hooks/use-device";
 
 const DeviceContext = createContext<DeviceInfo | null>(null);
 
-export function DeviceProvider({ children }: { children: ReactNode }) {
+export function DeviceProvider({ children }: Readonly<{ children: ReactNode }>) {
   const deviceInfo = useDevice();
   return (
     <DeviceContext.Provider value={deviceInfo}>

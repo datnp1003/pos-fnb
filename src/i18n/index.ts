@@ -1,4 +1,4 @@
-export type Locale = "vi" | "en" | "zh" | "ko" | "ja";
+export type Locale = "vi" | "en" | "zh" | "ko" | "ja" | "pt";
 
 export const locales: { code: Locale; label: string; flag: string }[] = [
   { code: "vi", label: "Tiếng Việt", flag: "🇻🇳" },
@@ -6,6 +6,7 @@ export const locales: { code: Locale; label: string; flag: string }[] = [
   { code: "zh", label: "中文", flag: "🇨🇳" },
   { code: "ko", label: "한국어", flag: "🇰🇷" },
   { code: "ja", label: "日本語", flag: "🇯🇵" },
+  { code: "pt", label: "Português", flag: "🇧🇷" },
 ];
 
 export const localeNames: Record<Locale, string> = {
@@ -14,4 +15,5 @@ export const localeNames: Record<Locale, string> = {
   zh: "中文",
   ko: "한국어",
   ja: "日本語",
+  pt: "Português",
 };

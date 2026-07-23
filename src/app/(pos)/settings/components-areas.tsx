@@ -10,23 +10,25 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Plus, Pencil, Trash2, Table2 } from "lucide-react";
-import { toast } from "sonner";
+import { runAction } from "@/lib/run-action";
 
 type Area = {
   id: string; name: string; type: string; sortOrder: number;
   tables: TableInfo[]; _count: { tables: number };
 };
 type TableInfo = { id: string; name: string; capacity: number; isKaraoke: boolean };
+type ActionFn = (...args: never[]) => Promise<unknown>;
+type LooseFn = (...args: unknown[]) => Promise<unknown>;
 
-type Props = {
+type Props = Readonly<{
   areas: Area[];
-  createArea: Function;
-  updateArea: Function;
-  deleteArea: Function;
-  createTable: Function;
-  updateTable: Function;
-  deleteTable: Function;
-};
+  createArea: ActionFn;
+  updateArea: ActionFn;
+  deleteArea: ActionFn;
+  createTable: ActionFn;
+  updateTable: ActionFn;
+  deleteTable: ActionFn;
+}>;
 
 export function AreasManager({ areas, createArea, updateArea, deleteArea, createTable, updateTable, deleteTable }: Props) {
   const { t } = useI18n();
@@ -37,7 +39,6 @@ export function AreasManager({ areas, createArea, updateArea, deleteArea, create
   const [editTable, setEditTable] = useState<TableInfo | null>(null);
   const [areaForm, setAreaForm] = useState({ name: "", type: "RESTAURANT", sortOrder: "0" });
   const [tableForm, setTableForm] = useState({ name: "", areaId: "", capacity: "4", isKaraoke: false, positionX: "0", positionY: "0" });
-  const [activeArea, setActiveArea] = useState<string>("");
 
   function openNewArea() { setEditArea(null); setAreaForm({ name: "", type: "RESTAURANT", sortOrder: "0" }); setOpenArea(true); }
   function openEditArea(a: Area) { setEditArea(a); setAreaForm({ name: a.name, type: a.type, sortOrder: a.sortOrder.toString() }); setOpenArea(true); }
@@ -45,7 +46,7 @@ export function AreasManager({ areas, createArea, updateArea, deleteArea, create
   function openNewTable(areaId: string) {
     const area = areas.find(a => a.id === areaId);
     const isKaraoke = area?.type === "KARAOKE";
-    setEditTable(null); setActiveArea(areaId);
+    setEditTable(null);
     setTableForm({ name: "", areaId, capacity: "4", isKaraoke, positionX: "0", positionY: "0" });
     setOpenTable(true);
   }
@@ -60,8 +61,14 @@ export function AreasManager({ areas, createArea, updateArea, deleteArea, create
     setOpenTable(true);
   }
 
-  function doAction(fn: Function, ...args: any[]) {
-    startTransition(async () => { try { await fn(...args); toast.success(t.common.success); setOpenArea(false); setOpenTable(false); } catch { toast.error(t.common.error); } });
+  function doAction(fn: ActionFn, ...args: unknown[]) {
+    startTransition(async () => {
+      await runAction(
+        () => (fn as LooseFn)(...args),
+        { success: t.common.success, error: t.common.error },
+        () => { setOpenArea(false); setOpenTable(false); },
+      );
+    });
   }
 
   return (

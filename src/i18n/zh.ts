@@ -163,6 +163,7 @@ export const zh = {
     "noStockIns": "暂无入库单",
     "noStockOuts": "暂无出库单",
     "manualAddRow": "或手动添加行",
+    "ingredientList": "原料列表",
     "totalItems": "总数量：",
     "all": "全部",
     "showing": "显示",
@@ -477,6 +478,9 @@ export const zh = {
     "toppingPageDesc": "菜品选项组：大小、甜度、加料...",
     "areaPageDesc": "管理区域及各区域内的桌台。",
     "paymentMethodPageDesc": "现金、转账、Momo、刷卡...",
+    "currenciesPageDesc": "管理货币 — 设置主要货币和汇率。",
+    "exchangeRate": "汇率",
+    "primary": "主要",
     "ingredientPageDesc": "原料列表及各菜品的配方用量。",
     "productPageDesc": "管理菜品与饮品列表。",
     "unitPageDesc": "计量单位：公斤、克、升、个、份...",
@@ -664,6 +668,8 @@ export const zh = {
     "noDesc": "无描述。"
   },
   "common": {
+    "symbol": "符号",
+    "confirmDelete": "您确定要删除吗？",
     "save": "保存",
     "cancel": "取消",
     "add": "添加",

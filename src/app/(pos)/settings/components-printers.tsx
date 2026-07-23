@@ -7,20 +7,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Pencil, Trash2, Printer, Wifi, Server, Smartphone } from "lucide-react";
-import { toast } from "sonner";
+import { runAction } from "@/lib/run-action";
 
-type P = { id: string; name: string; type: string; ipAddress: string; port: number; paperWidth: number; printMode: string; isActive: boolean; areas: any[]; printTemplates: any[] };
+type PrinterArea = { areaId: string; area?: { name?: string | null } | null };
+type P = { id: string; name: string; type: string; ipAddress: string; port: number; paperWidth: number; printMode: string; isActive: boolean; areas: PrinterArea[]; printTemplates: Record<string, unknown>[] };
 type A = { id: string; name: string };
-type ActionFn = (...args: any[]) => Promise<any>;
+type ActionFn = (...args: never[]) => Promise<unknown>;
+type LooseFn = (...args: unknown[]) => Promise<unknown>;
 
 export function PrintersManager({
   printers, areas, createPrinter, updatePrinter, deletePrinter
-}: { printers: P[]; areas: A[]; createPrinter: ActionFn; updatePrinter: ActionFn; deletePrinter: ActionFn }) {
+}: Readonly<{ printers: P[]; areas: A[]; createPrinter: ActionFn; updatePrinter: ActionFn; deletePrinter: ActionFn }>) {
   const { t } = useI18n();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
@@ -31,20 +32,24 @@ export function PrintersManager({
   });
 
   function openNew() { setEditing(null); setForm({ name: "", type: "KITCHEN", ipAddress: "", port: "9100", paperWidth: "80", printMode: "SERVER", isActive: true, areaIds: [] }); setOpen(true); }
-  function openEdit(p: P) { setEditing(p); setForm({ name: p.name, type: p.type, ipAddress: p.ipAddress, port: p.port.toString(), paperWidth: p.paperWidth.toString(), printMode: p.printMode || "SERVER", isActive: p.isActive, areaIds: p.areas?.map((a: any) => a.areaId) ?? [] }); setOpen(true); }
+  function openEdit(p: P) { setEditing(p); setForm({ name: p.name, type: p.type, ipAddress: p.ipAddress, port: p.port.toString(), paperWidth: p.paperWidth.toString(), printMode: p.printMode || "SERVER", isActive: p.isActive, areaIds: p.areas?.map((a) => a.areaId) ?? [] }); setOpen(true); }
 
   function toggleArea(id: string) {
     setForm(f => ({ ...f, areaIds: f.areaIds.includes(id) ? f.areaIds.filter(a => a !== id) : [...f.areaIds, id] }));
   }
 
-  function doAct(fn: ActionFn, ...args: any[]) {
+  function doAct(fn: ActionFn, ...args: unknown[]) {
     start(async () => {
-      try { await fn(...args); toast.success(t.common.success); setOpen(false); } catch { toast.error(t.common.error); }
+      await runAction(
+        () => (fn as LooseFn)(...args),
+        { success: t.common.success, error: t.common.error },
+        () => setOpen(false),
+      );
     });
   }
 
   function save() {
-    const data = { ...form, port: parseInt(form.port), paperWidth: parseInt(form.paperWidth) };
+    const data = { ...form, port: Number.parseInt(form.port, 10), paperWidth: Number.parseInt(form.paperWidth, 10) };
     if (editing) doAct(updatePrinter, editing.id, data);
     else doAct(createPrinter, data);
   }
@@ -89,7 +94,7 @@ export function PrintersManager({
               ) : (
                 <div className="flex items-center gap-1"><Wifi className="h-3 w-3" /> {p.ipAddress}:{p.port} {t.inventory.viaPort} {p.paperWidth}mm</div>
               )}
-              {p.areas?.length > 0 && <div className="mt-1">{t.inventory.areaLabel} {p.areas.map((a: any) => a.area?.name).join(", ")}</div>}
+              {p.areas?.length > 0 && <div className="mt-1">{t.inventory.areaLabel} {p.areas.map((a) => a.area?.name).join(", ")}</div>}
               {p.printTemplates?.length > 0 && <div className="mt-1">{p.printTemplates.length} {t.inventory.templateCount}</div>}
             </div>
           </CardContent>
@@ -134,9 +139,10 @@ export function PrintersManager({
             <div className="space-y-2 p-3 rounded-lg border border-gray-100 bg-gray-50">
               <Label className="text-xs uppercase tracking-wider text-gray-500">{t.inventory.printModeLabel}</Label>
               <div className="grid grid-cols-2 gap-3">
-                <label
+                <button
+                  type="button"
                   onClick={() => setForm(f => ({ ...f, printMode: "SERVER" }))}
-                  className={`flex items-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                  className={`flex items-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-all text-left ${
                     form.printMode === "SERVER" ? "border-amber-400 bg-amber-50" : "border-gray-200 bg-white hover:border-gray-300"
                   }`}
                 >
@@ -145,10 +151,11 @@ export function PrintersManager({
                     <div className="text-sm font-medium">Server</div>
                     <div className="text-[10px] text-gray-400">{t.inventory.serverModeDesc}</div>
                   </div>
-                </label>
-                <label
+                </button>
+                <button
+                  type="button"
                   onClick={() => setForm(f => ({ ...f, printMode: "CLIENT" }))}
-                  className={`flex items-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                  className={`flex items-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-all text-left ${
                     form.printMode === "CLIENT" ? "border-blue-400 bg-blue-50" : "border-gray-200 bg-white hover:border-gray-300"
                   }`}
                 >
@@ -157,7 +164,7 @@ export function PrintersManager({
                     <div className="text-sm font-medium">{t.inventory.deviceLabel}</div>
                     <div className="text-[10px] text-gray-400">{t.inventory.clientModeDesc}</div>
                   </div>
-                </label>
+                </button>
               </div>
               {form.printMode === "CLIENT" && (
                 <p className="text-[11px] text-blue-700 bg-blue-50 rounded-lg p-2 mt-2">

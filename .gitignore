@@ -19,6 +19,7 @@ prisma/dev.db-journal
 
 # next.js (all locations)
 .next/
+src/.next/
 out/
 
 # production
@@ -49,3 +50,15 @@ next-env.d.ts
 /src/generated/prisma
 tsconfig.tsbuildinfo
 screenshot.cjs
+
+# CI / Quality Gate
+eslint-report.json
+.scannerwork/
+
+node_modules
+.git
+.next
+out
+build
+.env
+*.log

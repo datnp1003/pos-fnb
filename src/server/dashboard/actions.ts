@@ -2,6 +2,18 @@
 
 import { db } from "@/lib/db";
 
+function getOrderLabel(status: string, tableName: string): string {
+  if (status === "PAID") return `Table ${tableName} checkout`;
+  if (status === "SENT") return `Table ${tableName} preparing`;
+  return `Table ${tableName} opened`;
+}
+
+function getOrderColor(status: string): string {
+  if (status === "PAID") return "#10b981";
+  if (status === "SENT") return "#d97706";
+  return "#3b82f6";
+}
+
 export async function getDashboardStats() {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -46,14 +58,11 @@ export async function getDashboardStats() {
   });
 
   const timeline = recentOrders.map(o => ({
-    label: o.status === "PAID"
-      ? `Bàn ${o.table.name} thanh toán`
-      : o.status === "SENT"
-        ? `Bàn ${o.table.name} đang chuẩn bị`
-        : `Bàn ${o.table.name} mở order`,
+    id: o.id,
+    label: getOrderLabel(o.status, o.table.name),
     amount: o.totalAmount,
-    time: o.closedAt ? minutesAgo(o.closedAt) : minutesAgo(o.openedAt),
-    color: o.status === "PAID" ? "#10b981" : o.status === "SENT" ? "#d97706" : "#3b82f6",
+    time: minutesAgo(o.closedAt ?? o.openedAt),
+    color: getOrderColor(o.status),
   }));
 
   // Top selling product today
@@ -90,6 +99,6 @@ export async function getDashboardStats() {
 function minutesAgo(date: Date) {
   const mins = Math.round((Date.now() - date.getTime()) / 60000);
   if (mins < 1) return "Just now";
-  if (mins < 60) return `${mins} phút`;
+  if (mins < 60) return `${mins} mins`;
   return `${Math.floor(mins / 60)}h${mins % 60}m`;
 }

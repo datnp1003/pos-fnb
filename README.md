@@ -206,6 +206,19 @@ To add a new language: copy `src/i18n/vi.ts` → translate values → register i
 
 ---
 
+## 🧪 Testing
+
+Unit tests run on [Vitest](https://vitest.dev) with Testing Library and isolated mocks (no real database, network, printer or Bluetooth).
+
+```bash
+npm run test            # Run the unit test suite
+npm run test:coverage   # Run with coverage (enforces 80% global gates)
+```
+
+Coverage gates are set to 80% for statements, branches, functions and lines in `vitest.config.ts`. After running with coverage, open `coverage/index.html` for the HTML report; `coverage/lcov.info` is produced for CI integration. Tests live next to the code they cover as `*.test.ts` / `*.test.tsx`.
+
+---
+
 ## 🤝 Contributing
 
 Contributions are welcome! Here's how:
@@ -220,7 +233,7 @@ Contributions are welcome! Here's how:
 - Translations for more languages
 - Payment gateway integrations (VNPay, Stripe, PayPal)
 - Receipt printer ESC/POS protocol improvements
-- Unit & E2E tests
+- E2E tests and broader client-component unit coverage
 
 ---
 

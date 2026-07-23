@@ -71,15 +71,90 @@ function addDataRow(ws: ExcelJS.Worksheet, values: (string | number)[], row: num
   });
 }
 
+// Escreve pares "rótulo: valor" em duas colunas (col 1 rótulo em negrito, col 2 valor).
+// Retorna o próximo `row` livre. Mantém o mesmo estilo dos blocos inline anteriores.
+function addSummaryRows(
+  ws: ExcelJS.Worksheet,
+  rows: ReadonlyArray<ReadonlyArray<string | number>>,
+  startRow: number,
+): number {
+  let row = startRow;
+  rows.forEach(([k, v]) => {
+    ws.getCell(row, 1).value = k;
+    ws.getCell(row, 1).font = { bold: true, size: 10 };
+    ws.getCell(row, 2).value = v;
+    ws.getCell(row, 2).font = AMOUNT_FONT;
+    row++;
+  });
+  return row;
+}
+
 function colWidths(ws: ExcelJS.Worksheet, widths: number[]) {
   widths.forEach((w, i) => {
     ws.getColumn(i + 1).width = w;
   });
 }
 
+// ======================== ROW / SUMMARY TYPES ========================
+// Structural subsets of the report query results — callers may pass richer objects.
+
+type Dateish = string | Date;
+type Money = Record<string, number>;
+
+interface InvoiceRow {
+  orderNumber: string | number; orderNumberSuffix?: string | number | null;
+  table: string; guestCount: number; type: string; staff: string;
+  subtotal: number; vatAmount: number; exciseTaxAmount: number; discountAmount: number;
+  serviceCharge: number; totalAmount: number; paymentMethods: string; items: string;
+  closedAt?: Dateish | null;
+}
+interface InvoiceSummary {
+  totalOrders: number; totalRevenue: number; totalSubtotal: number; totalVat: number;
+  totalExciseTax: number; totalDiscount: number; totalServiceCharge: number;
+}
+interface SoldItemRow {
+  productName: string; category: string; quantity: number; unitPrice: number;
+  toppings?: string | null; totalAmount: number; orderNumber: string | number; table: string; closedAt?: Dateish | null;
+}
+interface SoldByProduct { name: string; category: string; quantity: number; revenue: number; }
+interface SoldSummary { totalItems: number; totalQuantity: number; totalRevenue: number; }
+interface RevenueDay {
+  date: Dateish; orders: number; subtotal: number; vat: number; excise: number;
+  discount: number; service: number; revenue: number; normalCount?: number; compCount?: number;
+  [key: string]: unknown;
+}
+interface RevenueSummary extends InvoiceSummary {
+  totalOtherIncome: number; totalExpenses: number; profit: number; byPaymentMethod: Money;
+}
+interface StockInItem { ingredient: { name: string }; quantity: number; unitPrice: number; totalPrice: number; }
+interface StockInRow { code: string; createdAt: Dateish; supplier?: string | null; user?: { name?: string | null } | null; items: StockInItem[]; [key: string]: unknown; }
+interface StockOutBatch { quantity: number; unitCost: number; batch?: { batchCode?: string | null } | null; }
+interface StockOutRow {
+  createdAt: Dateish; ingredient?: { name?: string | null } | null; quantity: number; reason: string;
+  totalCost?: number | null; batches?: StockOutBatch[]; user?: { name?: string | null } | null; note?: string | null;
+}
+interface IngredientRow {
+  name: string; purchaseUnit?: string; baseUnit: string; conversionFactor?: number;
+  currentStock: number; minStock: number; costPerBaseUnit: number;
+  recipes?: { product: { name: string } }[]; supplier?: string | null;
+  [key: string]: unknown;
+}
+interface StockInSummary { totalStockIns: number; totalItems: number; totalAmount: number; [key: string]: unknown; }
+interface StockOutSummary { totalStockOuts: number; totalQuantity: number; totalCost?: number; }
+interface WarehouseSummary {
+  totalIngredients: number; totalStockValue: number; totalProducts: number; totalCategories: number;
+  totalSuppliers: number; lowStockCount: number; outOfStockCount: number;
+}
+interface LowStockRow { name: string; currentStock: number; minStock: number; baseUnit: string; supplier?: string | null; }
+interface BatchRow {
+  ingredient?: { name?: string | null; baseUnit?: string | null } | null;
+  batchCode?: string | null; stockInItem?: { stockIn?: { code?: string | null; supplier?: string | null } | null } | null;
+  receivedAt: Dateish; remainingQuantity: number; unitCost: number;
+}
+
 // ======================== EXPORT FUNCTIONS ========================
 
-export async function exportInvoicesToExcel(invoices: any[], summary: any, dateFrom: string, dateTo: string) {
+export async function exportInvoicesToExcel(invoices: InvoiceRow[], summary: InvoiceSummary, dateFrom: string, dateTo: string) {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("Invoices");
 
@@ -93,20 +168,14 @@ export async function exportInvoicesToExcel(invoices: any[], summary: any, dateF
   addSection(ws, "📊 OVERVIEW", row, 1); row++;
   const summaryData = [
     ["Total Orders:", summary.totalOrders],
-    ["Total Revenue:", `${fmt(summary.totalRevenue)}đ`],
-    ["Total Subtotal:", `${fmt(summary.totalSubtotal)}đ`],
-    ["Total VAT:", `${fmt(summary.totalVat)}đ`],
-    ["Total Excise Tax:", `${fmt(summary.totalExciseTax)}đ`],
-    ["Total Discount:", `${fmt(summary.totalDiscount)}đ`],
-    ["Total Service Charge:", `${fmt(summary.totalServiceCharge)}đ`],
+    ["Total Revenue:", `${fmt(summary.totalRevenue)}`],
+    ["Total Subtotal:", `${fmt(summary.totalSubtotal)}`],
+    ["Total VAT:", `${fmt(summary.totalVat)}`],
+    ["Total Excise Tax:", `${fmt(summary.totalExciseTax)}`],
+    ["Total Discount:", `${fmt(summary.totalDiscount)}`],
+    ["Total Service Charge:", `${fmt(summary.totalServiceCharge)}`],
   ];
-  summaryData.forEach(([k, v]) => {
-    ws.getCell(row, 1).value = k;
-    ws.getCell(row, 1).font = { bold: true, size: 10 };
-    ws.getCell(row, 2).value = v;
-    ws.getCell(row, 2).font = AMOUNT_FONT;
-    row++;
-  });
+  row = addSummaryRows(ws, summaryData, row);
   row++;
 
   // Table
@@ -140,7 +209,7 @@ export async function exportInvoicesToExcel(invoices: any[], summary: any, dateF
   return buf;
 }
 
-export async function exportSoldItemsToExcel(items: any[], byProduct: any[], summary: any, dateFrom: string, dateTo: string) {
+export async function exportSoldItemsToExcel(items: SoldItemRow[], byProduct: SoldByProduct[], summary: SoldSummary, dateFrom: string, dateTo: string) {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("Sold Items");
 
@@ -154,7 +223,7 @@ export async function exportSoldItemsToExcel(items: any[], byProduct: any[], sum
   const summaryData = [
     ["Total Lines Sold:", summary.totalItems],
     ["Total Quantity:", summary.totalQuantity],
-    ["Total Revenue:", `${fmt(summary.totalRevenue)}đ`],
+    ["Total Revenue:", `${fmt(summary.totalRevenue)}`],
   ];
   summaryData.forEach(([k, v]) => { ws.getCell(row, 1).value = k; ws.getCell(row, 1).font = { bold: true, size: 10 }; ws.getCell(row, 2).value = v; ws.getCell(row, 2).font = AMOUNT_FONT; row++; });
   row++;
@@ -188,7 +257,7 @@ export async function exportSoldItemsToExcel(items: any[], byProduct: any[], sum
   return buf;
 }
 
-export async function exportRevenueToExcel(days: any[], summary: any, expensesByCategory: any, incomeByCategory: any, dateFrom: string, dateTo: string) {
+export async function exportRevenueToExcel(days: RevenueDay[], summary: RevenueSummary, expensesByCategory: Money, incomeByCategory: Money, dateFrom: string, dateTo: string) {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("Revenue");
 
@@ -201,40 +270,40 @@ export async function exportRevenueToExcel(days: any[], summary: any, expensesBy
   addSection(ws, "📊 OVERVIEW", row, 1); row++;
   const summaryData = [
     ["Total Orders:", summary.totalOrders],
-    ["Total Sales Revenue:", `${fmt(summary.totalRevenue)}đ`],
-    ["Total Subtotal:", `${fmt(summary.totalSubtotal)}đ`],
-    ["Total VAT:", `${fmt(summary.totalVat)}đ`],
-    ["Total Excise Tax:", `${fmt(summary.totalExciseTax)}đ`],
-    ["Total Discount:", `${fmt(summary.totalDiscount)}đ`],
-    ["Total Service Charge:", `${fmt(summary.totalServiceCharge)}đ`],
-    ["Total Other Income:", `${fmt(summary.totalOtherIncome)}đ`],
-    ["Total Expenses:", `${fmt(summary.totalExpenses)}đ`],
-    ["Profit:", `${fmt(summary.profit)}đ`],
+    ["Total Sales Revenue:", `${fmt(summary.totalRevenue)}`],
+    ["Total Subtotal:", `${fmt(summary.totalSubtotal)}`],
+    ["Total VAT:", `${fmt(summary.totalVat)}`],
+    ["Total Excise Tax:", `${fmt(summary.totalExciseTax)}`],
+    ["Total Discount:", `${fmt(summary.totalDiscount)}`],
+    ["Total Service Charge:", `${fmt(summary.totalServiceCharge)}`],
+    ["Total Other Income:", `${fmt(summary.totalOtherIncome)}`],
+    ["Total Expenses:", `${fmt(summary.totalExpenses)}`],
+    ["Profit:", `${fmt(summary.profit)}`],
   ];
-  summaryData.forEach(([k, v]) => { ws.getCell(row, 1).value = k; ws.getCell(row, 1).font = { bold: true, size: 10 }; ws.getCell(row, 2).value = v; ws.getCell(row, 2).font = AMOUNT_FONT; row++; });
+  row = addSummaryRows(ws, summaryData, row);
   row++;
 
   // Payment methods
   if (Object.keys(summary.byPaymentMethod).length > 0) {
     addSection(ws, "💳 BY PAYMENT METHOD", row, 1); row++;
-    Object.entries(summary.byPaymentMethod).forEach(([method, amount]) => {
-      ws.getCell(row, 1).value = method;
-      ws.getCell(row, 1).font = { bold: true, size: 10 };
-      ws.getCell(row, 2).value = `${fmt(amount as number)}đ`;
-      ws.getCell(row, 2).font = AMOUNT_FONT;
-      row++;
-    });
+    row = addSummaryRows(
+      ws,
+      Object.entries(summary.byPaymentMethod).map(
+        ([method, amount]) => [method, `${fmt(amount)}`] as const,
+      ),
+      row,
+    );
     row++;
   }
 
   // Daily breakdown
   addSection(ws, "📅 DAILY REVENUE", row, 1); row++;
-  const dayHeaders = ["Ngày", "Số HĐ", "Tiền hàng", "VAT", "TTĐB", "Giảm giá", "Phí DV", "Doanh thu", "Normal", "Complimentary"];
+  const dayHeaders = ["Date", "Invoices", "Subtotal", "VAT", "Excise Tax", "Discount", "Service Charge", "Revenue", "Normal", "Complimentary"];
   addHeaderRow(ws, dayHeaders, row); row++;
   days.forEach((d) => {
     addDataRow(ws, [
       new Date(d.date).toLocaleDateString("vi-VN"), d.orders, d.subtotal, d.vat, d.excise,
-      d.discount, d.service, d.revenue, d.normalCount, d.compCount,
+      d.discount, d.service, d.revenue, d.normalCount ?? 0, d.compCount ?? 0,
     ], row);
     row++;
   });
@@ -243,13 +312,13 @@ export async function exportRevenueToExcel(days: any[], summary: any, expensesBy
   // Expenses
   if (Object.keys(expensesByCategory).length > 0) {
     addSection(ws, "📉 EXPENSE BY CATEGORY", row, 1); row++;
-    Object.entries(expensesByCategory).forEach(([cat, amount]) => {
-      ws.getCell(row, 1).value = cat;
-      ws.getCell(row, 1).font = { bold: true, size: 10 };
-      ws.getCell(row, 2).value = `${fmt(amount as number)}đ`;
-      ws.getCell(row, 2).font = AMOUNT_FONT;
-      row++;
-    });
+    row = addSummaryRows(
+      ws,
+      Object.entries(expensesByCategory).map(
+        ([cat, amount]) => [cat, `${fmt(amount)}`] as const,
+      ),
+      row,
+    );
   }
 
   colWidths(ws, [14, 10, 14, 14, 14, 14, 14, 16, 8, 8]);
@@ -258,7 +327,7 @@ export async function exportRevenueToExcel(days: any[], summary: any, expensesBy
   return buf;
 }
 
-export async function exportIngredientsToExcel(stockIns: any[], stockOuts: any[], stockInSummary: any, stockOutSummary: any, ingredients: any[], dateFrom: string, dateTo: string) {
+export async function exportIngredientsToExcel(stockIns: StockInRow[], stockOuts: StockOutRow[], stockInSummary: StockInSummary, stockOutSummary: StockOutSummary, ingredients: IngredientRow[], dateFrom: string, dateTo: string) {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("Ingredients");
 
@@ -272,18 +341,18 @@ export async function exportIngredientsToExcel(stockIns: any[], stockOuts: any[]
   const inSummary = [
     ["Total Stock Ins:", stockInSummary.totalStockIns],
     ["Total Items In:", stockInSummary.totalItems],
-    ["Total Stock In Value:", `${fmt(stockInSummary.totalAmount)}đ`],
+    ["Total Stock In Value:", `${fmt(stockInSummary.totalAmount)}`],
   ];
-  inSummary.forEach(([k, v]) => { ws.getCell(row, 1).value = k; ws.getCell(row, 1).font = { bold: true, size: 10 }; ws.getCell(row, 2).value = v; ws.getCell(row, 2).font = AMOUNT_FONT; row++; });
+  row = addSummaryRows(ws, inSummary, row);
   row++;
 
   addSection(ws, "📊 STOCK OUT OVERVIEW", row, 1); row++;
   const outSummary = [
     ["Total Stock Outs:", stockOutSummary.totalStockOuts],
     ["Total Qty Out:", stockOutSummary.totalQuantity],
-    ["FIFO Cost Out:", `${fmt(stockOutSummary.totalCost || 0)}đ`],
+    ["FIFO Cost Out:", `${fmt(stockOutSummary.totalCost || 0)}`],
   ];
-  outSummary.forEach(([k, v]) => { ws.getCell(row, 1).value = k; ws.getCell(row, 1).font = { bold: true, size: 10 }; ws.getCell(row, 2).value = v; ws.getCell(row, 2).font = AMOUNT_FONT; row++; });
+  row = addSummaryRows(ws, outSummary, row);
   row++;
 
   // Stock In table
@@ -291,7 +360,7 @@ export async function exportIngredientsToExcel(stockIns: any[], stockOuts: any[]
   const inHeaders = ["Ref #", "Date In", "Supplier", "Ingredient", "Qty", "Unit Price", "Total", "Staff"];
   addHeaderRow(ws, inHeaders, row); row++;
   stockIns.forEach((si) => {
-    si.items.forEach((item: any, idx: number) => {
+    si.items.forEach((item, idx) => {
       const date = new Date(si.createdAt).toLocaleDateString("vi-VN");
       addDataRow(ws, [
         idx === 0 ? si.code : "",
@@ -317,7 +386,7 @@ export async function exportIngredientsToExcel(stockIns: any[], stockOuts: any[]
   const outHeaders = ["Date Out", "Ingredient", "Quantity", "Reason", "FIFO Cost", "Batch Layers", "Staff", "Note"];
   addHeaderRow(ws, outHeaders, row); row++;
   stockOuts.forEach((so) => {
-    const layers = so.batches?.map((b: any) => `${b.quantity} @ ${fmt(b.unitCost)} (${b.batch?.batchCode || "batch"})`).join("; ") || "";
+    const layers = so.batches?.map((b) => `${b.quantity} @ ${fmt(b.unitCost)} (${b.batch?.batchCode || "batch"})`).join("; ") || "";
     addDataRow(ws, [
       new Date(so.createdAt).toLocaleDateString("vi-VN"),
       so.ingredient?.name || "—",
@@ -339,14 +408,14 @@ export async function exportIngredientsToExcel(stockIns: any[], stockOuts: any[]
   ingredients.forEach((ing) => {
     addDataRow(ws, [
       ing.name,
-      ing.purchaseUnit,
+      ing.purchaseUnit ?? "",
       ing.baseUnit,
-      ing.conversionFactor,
+      ing.conversionFactor ?? 0,
       ing.currentStock,
       ing.minStock,
       ing.costPerBaseUnit,
       ing.currentStock * ing.costPerBaseUnit,
-      ing.recipes?.map((r: any) => r.product.name).join(", ") || "—",
+      ing.recipes?.map((r) => r.product.name).join(", ") || "—",
     ], row);
     row++;
   });
@@ -357,7 +426,7 @@ export async function exportIngredientsToExcel(stockIns: any[], stockOuts: any[]
   return buf;
 }
 
-export async function exportWarehouseToExcel(ingredients: any[], summary: any, lowStock: any[], outOfStock: any[], batches: any[] = []) {
+export async function exportWarehouseToExcel(ingredients: IngredientRow[], summary: WarehouseSummary, lowStock: LowStockRow[], outOfStock: LowStockRow[], batches: BatchRow[] = []) {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("Warehouse");
 
@@ -368,14 +437,14 @@ export async function exportWarehouseToExcel(ingredients: any[], summary: any, l
   addSection(ws, "📊 WAREHOUSE OVERVIEW", row, 1); row++;
   const summaryData = [
     ["Total Ingredients:", summary.totalIngredients],
-    ["Total Stock Value:", `${fmt(summary.totalStockValue)}đ`],
+    ["Total Stock Value:", `${fmt(summary.totalStockValue)}`],
     ["Total Products:", summary.totalProducts],
     ["Total Categories:", summary.totalCategories],
     ["Total Suppliers:", summary.totalSuppliers],
     ["Below Min Stock:", summary.lowStockCount],
     ["Out of Stock:", summary.outOfStockCount],
   ];
-  summaryData.forEach(([k, v]) => { ws.getCell(row, 1).value = k; ws.getCell(row, 1).font = { bold: true, size: 10 }; ws.getCell(row, 2).value = v; ws.getCell(row, 2).font = AMOUNT_FONT; row++; });
+  row = addSummaryRows(ws, summaryData, row);
   row++;
 
   // Low stock alerts
@@ -429,14 +498,14 @@ export async function exportWarehouseToExcel(ingredients: any[], summary: any, l
   ingredients.forEach((ing) => {
     addDataRow(ws, [
       ing.name,
-      ing.purchaseUnit,
+      ing.purchaseUnit ?? "",
       ing.baseUnit,
-      ing.conversionFactor,
+      ing.conversionFactor ?? 0,
       ing.currentStock,
       ing.minStock,
       ing.costPerBaseUnit,
       ing.currentStock * ing.costPerBaseUnit,
-      ing.recipes?.map((r: any) => r.product.name).join(", ") || "—",
+      ing.recipes?.map((r) => r.product.name).join(", ") || "—",
       ing.supplier || "—",
     ], row);
     row++;

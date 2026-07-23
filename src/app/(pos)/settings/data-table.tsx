@@ -14,20 +14,21 @@ type Column = {
   type?: "text" | "number" | "percent";
 };
 
-type ActionFn = (...args: any[]) => Promise<any>;
+type ActionFn = (...args: never[]) => Promise<unknown>;
+type LooseFn = (...args: unknown[]) => Promise<unknown>;
 
-type Props = {
-  data: any[];
+type Props = Readonly<{
+  data: Record<string, unknown>[];
   columns: Column[];
   onCreate?: ActionFn;
   onUpdate?: ActionFn;
   onDelete?: ActionFn;
-};
+}>;
 
 export function DataTable({ data, columns, onCreate, onUpdate, onDelete }: Props) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<any>(null);
+  const [editing, setEditing] = useState<Record<string, unknown> | null>(null);
   const [form, setForm] = useState<Record<string, string>>({});
   const [pending, startTransition] = useTransition();
 
@@ -39,13 +40,15 @@ export function DataTable({ data, columns, onCreate, onUpdate, onDelete }: Props
     setOpen(true);
   }
 
-  function openEdit(row: any) {
+  function openEdit(row: Record<string, unknown>) {
     setEditing(row);
     const init: Record<string, string> = {};
     columns.forEach(c => {
-      let val = row[c.key];
-      if (c.type === "percent") val = ((val ?? 0) * 100).toString();
-      init[c.key] = val?.toString() ?? "";
+      const raw = row[c.key];
+      const stringified = (typeof raw === "string" || typeof raw === "number" || typeof raw === "boolean") ? String(raw) : "";
+      init[c.key] = c.type === "percent"
+        ? ((Number(raw) || 0) * 100).toString()
+        : stringified;
     });
     setForm(init);
     setOpen(true);
@@ -55,10 +58,10 @@ export function DataTable({ data, columns, onCreate, onUpdate, onDelete }: Props
     startTransition(async () => {
       try {
         if (editing && onUpdate) {
-          await onUpdate(editing.id, form);
+          await (onUpdate as LooseFn)(editing.id, form);
           toast.success(t.common.success);
         } else if (onCreate) {
-          await onCreate(form);
+          await (onCreate as LooseFn)(form);
           toast.success(t.common.success);
         }
         setOpen(false);
@@ -72,7 +75,7 @@ export function DataTable({ data, columns, onCreate, onUpdate, onDelete }: Props
     if (!onDelete) return;
     startTransition(async () => {
       try {
-        await onDelete(id);
+        await (onDelete as LooseFn)(id);
         toast.success(t.common.success);
       } catch {
         toast.error(t.common.error);
@@ -104,10 +107,13 @@ export function DataTable({ data, columns, onCreate, onUpdate, onDelete }: Props
               <tr><td colSpan={columns.length + 1} className="text-center py-12 text-gray-400">{t.common.noData}</td></tr>
             )}
             {data.map(row => (
-              <tr key={row.id} className="hover:bg-amber-50/30 transition-colors">
+              <tr key={String(row.id)} className="hover:bg-amber-50/30 transition-colors">
                 {columns.map((c, ci) => {
-                  let val = row[c.key];
-                  if (c.type === "percent") val = ((val ?? 0) * 100).toFixed(0) + "%";
+                  const raw = row[c.key];
+                  const stringified = (typeof raw === "string" || typeof raw === "number" || typeof raw === "boolean") ? String(raw) : "";
+                  const val = c.type === "percent"
+                    ? ((Number(raw) || 0) * 100).toFixed(0) + "%"
+                    : stringified;
                   return (
                     <td key={c.key} className={`px-4 py-3 ${ci === 0 ? "font-semibold text-gray-900" : "text-gray-500"} ${c.key === "email" ? "text-sm font-mono" : ""}`}>
                       {val || <span className="text-gray-300 italic">—</span>}
@@ -122,7 +128,7 @@ export function DataTable({ data, columns, onCreate, onUpdate, onDelete }: Props
                       </Button>
                     )}
                     {onDelete && (
-                      <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-red-500" onClick={() => handleDelete(row.id)}>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-red-500" onClick={() => handleDelete(String(row.id))}>
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     )}

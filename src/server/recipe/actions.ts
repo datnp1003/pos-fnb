@@ -98,8 +98,8 @@ export async function autoDeductStockForOrder(orderId: string) {
       // Check stock
       const ingredient = recipe.ingredient;
       if (ingredient.currentStock < totalDeduct) {
-        console.warn(`⚠️ [TRỪ KHO] Không đủ ${ingredient.name}: cần ${totalDeduct}${ingredient.baseUnit}, còn ${ingredient.currentStock}${ingredient.baseUnit}`);
-        // Vẫn trừ nhưng log warning
+        console.warn(`⚠️ [INVENTORY] Insufficient ${ingredient.name}: need ${totalDeduct}${ingredient.baseUnit}, have ${ingredient.currentStock}${ingredient.baseUnit}`);
+        // Deduct anyway but log warning
       }
 
       await db.$transaction(async (tx) => {
@@ -128,7 +128,7 @@ export async function autoDeductStockForOrder(orderId: string) {
     }
   }
   
-  console.log(`📦 [TRỪ KHO] Đã trừ kho cho Order #${order.orderNumber} (${order.items.length} món)`);
+  console.log(`📦 [INVENTORY] Deducted stock for Order #${order.orderNumber} (${order.items.length} items)`);
 }
 
 // ============ RECALCULATE PRODUCT COST FROM RECIPE ============

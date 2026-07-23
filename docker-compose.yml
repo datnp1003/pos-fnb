@@ -1,0 +1,99 @@
+# docker-compose.yml
+# Ambiente completo para desenvolvimento local e produção.
+#
+# USO:
+#   1. Copie .env.example para .env e preencha os valores
+#   2. docker compose up -d
+
+services:
+  # ---------------------------------------------------------------------------
+  # Banco de dados — PostgreSQL 17
+  # ---------------------------------------------------------------------------
+  db:
+    image: postgres:17-alpine
+    container_name: pos-fnb-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-posfnb}
+      POSTGRES_USER: ${POSTGRES_USER:-posfnb}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-posfnb} -d ${POSTGRES_DB:-posfnb}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # Aplicação Next.js
+  # ---------------------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pos-fnb-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      # Constrói a DATABASE_URL a partir das variáveis individuais do Postgres
+      # Isso evita duplicar a senha em dois lugares do .env
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-posfnb}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-posfnb}?schema=public"
+    ports:
+      - "3000:3000"
+    volumes:
+      - app_uploads:/app/public/uploads
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # Cloudflare Tunnel (Acesso Público Seguro)
+  # ---------------------------------------------------------------------------
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: pos-fnb-tunnel
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - app
+
+  # ---------------------------------------------------------------------------
+  # Seed — Popula o banco com dados iniciais (roda só quando chamado)
+  # Uso: docker compose --profile seed run --rm seed
+  # ---------------------------------------------------------------------------
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: seeder
+    container_name: pos-fnb-seed
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-posfnb}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-posfnb}?schema=public"
+    profiles:
+      - seed
+
+volumes:
+  db_data:
+    driver: local
+  app_uploads:
+    driver: local

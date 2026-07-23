@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Pencil, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
+import { runAction } from "@/lib/run-action";
 
 type ServiceCharge = {
   id: string; name: string; type: string; value: number; scope: string;
@@ -22,13 +23,19 @@ type ServiceCharge = {
 type Cat = { id: string; name: string };
 type Area = { id: string; name: string };
 
-export function ServiceChargesUI({ charges, categories, areas, createServiceCharge, updateServiceCharge, deleteServiceCharge }: {
+type ServiceChargeInput = {
+  name: string; type: string; value: number; scope?: string; applyCondition?: string;
+  areaId?: string; categoryIds?: string; startDate?: string; endDate?: string;
+  minOrderValue?: number; minGuestCount?: number; isActive?: boolean;
+};
+
+export function ServiceChargesUI({ charges, categories, areas, createServiceCharge, updateServiceCharge, deleteServiceCharge }: Readonly<{
   charges: ServiceCharge[]; categories: Cat[]; areas: Area[];
-  createServiceCharge: (data: any) => Promise<any>;
-  updateServiceCharge: (id: string, data: any) => Promise<any>;
-  deleteServiceCharge: (id: string) => Promise<any>;
-}) {
-  const { t } = useI18n();
+  createServiceCharge: (data: ServiceChargeInput) => Promise<void>;
+  updateServiceCharge: (id: string, data: Record<string, unknown>) => Promise<void>;
+  deleteServiceCharge: (id: string) => Promise<void>;
+}>) {
+  const { t, locale } = useI18n();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -39,7 +46,7 @@ export function ServiceChargesUI({ charges, categories, areas, createServiceChar
   const [scope, setScope] = useState("ALL");
   const [areaId, setAreaId] = useState("");
   const [selectedCats, setSelectedCats] = useState<string[]>([]);
-  const [applyCondition, setCondition] = useState("ALL_DAYS");
+  const [applyCondition, setApplyCondition] = useState("ALL_DAYS");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [minOrder, setMinOrder] = useState("");
@@ -48,7 +55,7 @@ export function ServiceChargesUI({ charges, categories, areas, createServiceChar
 
   function reset() {
     setName(""); setType("PERCENTAGE"); setValue("0"); setScope("ALL");
-    setAreaId(""); setSelectedCats([]); setCondition("ALL_DAYS");
+    setAreaId(""); setSelectedCats([]); setApplyCondition("ALL_DAYS");
     setStartDate(""); setEndDate(""); setMinOrder(""); setMinGuest("");
     setIsActive(true);
   }
@@ -58,7 +65,7 @@ export function ServiceChargesUI({ charges, categories, areas, createServiceChar
     setName(c.name); setType(c.type); setValue(String(c.value)); setScope(c.scope);
     setAreaId(c.areaId || "");
     setSelectedCats(c.categoryIds ? JSON.parse(c.categoryIds) : []);
-    setCondition(c.applyCondition || "ALL_DAYS");
+    setApplyCondition(c.applyCondition || "ALL_DAYS");
     setStartDate(c.startDate ? c.startDate.toISOString().slice(0, 10) : "");
     setEndDate(c.endDate ? c.endDate.toISOString().slice(0, 10) : "");
     setMinOrder(c.minOrderValue ? String(c.minOrderValue) : "");
@@ -70,15 +77,15 @@ export function ServiceChargesUI({ charges, categories, areas, createServiceChar
   function save() {
     start(async () => {
       try {
-        const payload: any = {
-          name, type, value: parseFloat(value) || 0, scope,
+        const payload: ServiceChargeInput = {
+          name, type, value: Number.parseFloat(value) || 0, scope,
           applyCondition, isActive,
-          areaId: scope === "AREA" ? areaId || null : null,
-          categoryIds: scope === "CATEGORY" ? JSON.stringify(selectedCats) : null,
-          startDate: applyCondition === "DATE_RANGE" ? startDate || null : null,
-          endDate: applyCondition === "DATE_RANGE" ? endDate || null : null,
-          minOrderValue: applyCondition === "MIN_ORDER" ? (parseFloat(minOrder) || null) : null,
-          minGuestCount: applyCondition === "GUEST_COUNT" ? (parseInt(minGuest) || null) : null,
+          areaId: scope === "AREA" ? areaId || undefined : undefined,
+          categoryIds: scope === "CATEGORY" ? JSON.stringify(selectedCats) : undefined,
+          startDate: applyCondition === "DATE_RANGE" ? startDate || undefined : undefined,
+          endDate: applyCondition === "DATE_RANGE" ? endDate || undefined : undefined,
+          minOrderValue: applyCondition === "MIN_ORDER" ? (Number.parseFloat(minOrder) || undefined) : undefined,
+          minGuestCount: applyCondition === "GUEST_COUNT" ? (Number.parseInt(minGuest) || undefined) : undefined,
         };
         if (editingId) { await updateServiceCharge(editingId, payload); toast.success(t.common.success); }
         else { await createServiceCharge(payload); toast.success(t.common.success); }
@@ -88,7 +95,9 @@ export function ServiceChargesUI({ charges, categories, areas, createServiceChar
   }
 
   function del(id: string) {
-    start(async () => { try { await deleteServiceCharge(id); toast.success(t.common.success); } catch { toast.error(t.common.error); } });
+    start(async () => {
+      await runAction(() => deleteServiceCharge(id), { success: t.common.success, error: t.common.error });
+    });
   }
 
   const scTypeMap = {
@@ -113,13 +122,42 @@ export function ServiceChargesUI({ charges, categories, areas, createServiceChar
   };
 
   function condLabel(d: ServiceCharge) {
+    const localeMap: Record<string, string> = { pt: "pt-BR", en: "en-US" };
+    const dateLocale = localeMap[locale] ?? "vi-VN";
     switch (d.applyCondition) {
-      case "DATE_RANGE": return d.startDate ? `${new Date(d.startDate).toLocaleDateString("vi-VN")} → ${d.endDate ? new Date(d.endDate).toLocaleDateString("vi-VN") : "∞"}` : t.settings.scCondition.DATE_RANGE;
+      case "DATE_RANGE": {
+        if (!d.startDate) return t.settings.scCondition.DATE_RANGE;
+        const start = new Date(d.startDate).toLocaleDateString(dateLocale);
+        const end = d.endDate ? new Date(d.endDate).toLocaleDateString(dateLocale) : "∞";
+        return `${start} → ${end}`;
+      }
       case "HOLIDAY": return t.settings.scCondition.HOLIDAY;
-      case "MIN_ORDER": return `${t.settings.scCondition.MIN_ORDER.replace("X", Intl.NumberFormat("vi-VN").format(d.minOrderValue || 0) + "đ")}`;
+      case "MIN_ORDER": return `${t.settings.scCondition.MIN_ORDER.replace("X", new Intl.NumberFormat().format(d.minOrderValue || 0) + t.common.d)}`;
       case "GUEST_COUNT": return `${t.settings.scCondition.GUEST_COUNT.replace("X", String(d.minGuestCount))}`;
       default: return t.settings.scAllDays;
     }
+  }
+
+  function chargeValueLabel(c: ServiceCharge) {
+    if (c.type === "PERCENTAGE") return `${c.value}%`;
+    if (c.type === "PER_GUEST") return `${new Intl.NumberFormat().format(c.value)}${t.common.d}/${t.order.guestCount.toLowerCase()}`;
+    return `${new Intl.NumberFormat().format(c.value)}${t.common.d}`;
+  }
+
+  function chargeScopeLabel(c: ServiceCharge) {
+    if (c.scope === "AREA") return `${t.settings.areas}: ${c.area?.name || c.areaId}`;
+    if (c.scope === "CATEGORY" && c.categoryIds) {
+      return (
+        <span className="flex flex-wrap gap-1">
+          {(JSON.parse(c.categoryIds) as string[]).map((cid) => (
+            <span key={cid} className="bg-blue-100 text-blue-700 rounded px-1.5 py-0.5">
+              {categories.find(x => x.id === cid)?.name || cid}
+            </span>
+          ))}
+        </span>
+      );
+    }
+    return t.settings.allItems;
   }
 
   return (
@@ -152,12 +190,10 @@ export function ServiceChargesUI({ charges, categories, areas, createServiceChar
                 <td className="px-4 py-3 font-semibold">{c.name}</td>
                 <td className="px-4 py-3"><Badge variant="outline" className="text-xs">{scTypeMap[c.type as keyof typeof scTypeMap] || c.type}</Badge></td>
                 <td className="px-4 py-3 text-right font-mono">
-                  {c.type === "PERCENTAGE" ? `${c.value}%` : c.type === "PER_GUEST" ? `${Intl.NumberFormat("vi-VN").format(c.value)}đ/${t.order.guestCount.toLowerCase()}` : `${Intl.NumberFormat("vi-VN").format(c.value)}đ`}
+                  {chargeValueLabel(c)}
                 </td>
                 <td className="px-4 py-3 text-xs text-gray-500">
-                  {c.scope === "AREA" ? `${t.settings.areas}: ${c.area?.name || c.areaId}` : c.scope === "CATEGORY" && c.categoryIds ? (
-                    <span className="flex flex-wrap gap-1">{JSON.parse(c.categoryIds).map((cid: string) => <span key={cid} className="bg-blue-100 text-blue-700 rounded px-1.5 py-0.5">{categories.find(x => x.id === cid)?.name || cid}</span>)}</span>
-                  ) : t.settings.allItems}
+                  {chargeScopeLabel(c)}
                 </td>
                 <td className="px-4 py-3 text-xs text-gray-500">{condLabel(c)}</td>
                 <td className="px-4 py-3 text-center">{c.isActive ? <Badge className="bg-emerald-50 text-emerald-700 text-xs">{t.settings.active}</Badge> : <Badge variant="secondary" className="text-xs">{t.settings.inactive}</Badge>}</td>
@@ -221,7 +257,7 @@ export function ServiceChargesUI({ charges, categories, areas, createServiceChar
             )}
 
             <div className="space-y-1"><Label>{t.settings.scCondition.ALL_DAYS}</Label>
-              <Select value={applyCondition} onValueChange={v => setCondition(v || "ALL_DAYS")}>
+              <Select value={applyCondition} onValueChange={v => setApplyCondition(v || "ALL_DAYS")}>
                 <SelectTrigger><SelectValue>{condMap[applyCondition as keyof typeof condMap]}</SelectValue></SelectTrigger>
                 <SelectContent>
                   {Object.entries(condMap).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
@@ -235,7 +271,7 @@ export function ServiceChargesUI({ charges, categories, areas, createServiceChar
               </div>
             )}
             {applyCondition === "MIN_ORDER" && (
-              <div className="space-y-1"><Label>{t.settings.scCondition.MIN_ORDER} (đ)</Label><Input type="number" value={minOrder} onChange={e => setMinOrder(e.target.value)} /></div>
+              <div className="space-y-1"><Label>{t.settings.scCondition.MIN_ORDER} ({t.common.d})</Label><Input type="number" value={minOrder} onChange={e => setMinOrder(e.target.value)} /></div>
             )}
             {applyCondition === "GUEST_COUNT" && (
               <div className="space-y-1"><Label>{t.settings.scCondition.GUEST_COUNT}</Label><Input type="number" value={minGuest} onChange={e => setMinGuest(e.target.value)} /></div>

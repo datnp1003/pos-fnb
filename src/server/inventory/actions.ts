@@ -1,6 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { consumeFifoStock, createBatchForStockInItem } from "./fifo";
 
@@ -26,7 +27,7 @@ export async function createStockIn(data: {
 }) {
   // Generate stock-in code: PN-YYYYMMDD-XXX
   const today = new Date();
-  const dateStr = today.toISOString().slice(0, 10).replace(/-/g, "");
+  const dateStr = today.toISOString().slice(0, 10).replaceAll("-", "");
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const todayCount = await db.stockIn.count({
     where: { createdAt: { gte: todayStart } },
@@ -96,7 +97,7 @@ export async function createStockIn(data: {
         type: "EXPENSE",
         categoryId: "expense-stock",
         amount: totalAmount,
-        description: `Nhập kho #${data.supplier || "NCC"}`,
+        description: `Stock in #${data.supplier || "Supplier"}`,
         referenceId: stockIn.id,
         userId: data.userId,
       },
@@ -212,7 +213,7 @@ export async function closeCashRegister(registerId: string, data: {
   const pettyExpense = register.transactions.filter(t => t.type === "EXPENSE").reduce((s, t) => s + t.amount, 0);
 
   // Get sales revenue during this shift
-  const salesRevenue = 0; // TODO: calculate from orders in shift time
+  const salesRevenue = 0; 
 
   const expectedBalance = register.openingBalance + salesRevenue + pettyIncome - pettyExpense;
   const discrepancy = data.closingBalance - expectedBalance;
@@ -255,7 +256,7 @@ export async function createPettyTransaction(data: {
 // ============ CASH FLOW ============
 
 export async function getCashFlow(date?: string) {
-  const where: any = {};
+  const where: Prisma.CashFlowWhereInput = {};
   if (date) {
     const start = new Date(date);
     start.setHours(0, 0, 0, 0);

@@ -35,32 +35,32 @@ function getDeviceInfo(width: number, height: number): DeviceInfo {
 }
 
 function getInitialInfo(): DeviceInfo {
-  if (typeof window !== "undefined") {
-    return getDeviceInfo(window.innerWidth, window.innerHeight);
+  if (globalThis.window !== undefined) {
+    return getDeviceInfo(globalThis.innerWidth, globalThis.innerHeight);
   }
   return getDeviceInfo(1024, 768); // SSR fallback
 }
 
 export function useDevice(): DeviceInfo {
   const [info, setInfo] = useState<DeviceInfo>(getInitialInfo);
-  const lastDeviceRef = useRef<Device>(getDevice(typeof window !== "undefined" ? window.innerWidth : 1024));
+  const lastDeviceRef = useRef<Device>(getDevice(globalThis.window === undefined ? 1024 : globalThis.innerWidth));
 
   useEffect(() => {
     let raf = 0;
     function handleResize() {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
-        const newDevice = getDevice(window.innerWidth);
+        const newDevice = getDevice(globalThis.innerWidth);
         // Only re-render if the device category actually changed
         if (newDevice !== lastDeviceRef.current) {
           lastDeviceRef.current = newDevice;
-          setInfo(getDeviceInfo(window.innerWidth, window.innerHeight));
+          setInfo(getDeviceInfo(globalThis.innerWidth, globalThis.innerHeight));
         }
       });
     }
-    window.addEventListener("resize", handleResize, { passive: true });
+    globalThis.addEventListener("resize", handleResize, { passive: true });
     return () => {
-      window.removeEventListener("resize", handleResize);
+      globalThis.removeEventListener("resize", handleResize);
       cancelAnimationFrame(raf);
     };
   }, []);

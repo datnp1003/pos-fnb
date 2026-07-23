@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
-export default function SettingsLayout({ children }: { children: React.ReactNode }) {
+export default function SettingsLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const pathname = usePathname();
   const { t } = useI18n();
   const { isMobile } = useDeviceInfo();

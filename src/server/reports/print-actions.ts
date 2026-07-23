@@ -1,20 +1,14 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { revalidatePath } from "next/cache";
-import * as net from "net";
+import { Prisma } from "@prisma/client";
+import * as net from "node:net";
 
 function fmt(n: number) {
   return new Intl.NumberFormat("vi-VN").format(n || 0);
 }
 
 // ======================== PARSE TEMPLATE CONFIG ========================
-
-interface TplConfig {
-  header: { showLogo: boolean; showAddress: boolean; showPhone: boolean; showTaxCode: boolean; showDateTime: boolean };
-  body: { showTable: boolean; showGuestCount: boolean; showQuantity: boolean; showUnitPrice: boolean; showAmount: boolean; showTopping: boolean; showNote: boolean; showOrderNumber: boolean };
-  footer: { showSubtotal: boolean; showVat: boolean; showDiscount: boolean; showServiceCharge: boolean; showTotal: boolean; showPaymentMethod: boolean; showCashier: boolean; thankYou: string };
-}
 
 // ORDER config
 interface OrderCfg {
@@ -38,18 +32,20 @@ const defaultBillCfg: BillCfg = {
 
 function parseTplConfig(raw: string): { order: OrderCfg; bill: BillCfg } {
   try {
-    const parsed = JSON.parse(raw);
+    const parsed = JSON.parse(raw) as Partial<{ _version: number; order: OrderCfg; bill: BillCfg }>;
     if (parsed._version === 2) {
       return {
         order: { ...defaultOrderCfg, ...parsed.order },
-        bill: { ...defaultBillCfg, ...(parsed.bill || {}), header: { ...defaultBillCfg.header, ...parsed.bill?.header }, body: { ...defaultBillCfg.body, ...parsed.bill?.body }, footer: { ...defaultBillCfg.footer, ...parsed.bill?.footer } },
+        bill: { ...defaultBillCfg, header: { ...defaultBillCfg.header, ...parsed.bill?.header }, body: { ...defaultBillCfg.body, ...parsed.bill?.body }, footer: { ...defaultBillCfg.footer, ...parsed.bill?.footer } },
       };
     }
-  } catch {}
+  } catch {
+    // Malformed config JSON — fall through to defaults
+  }
   return { order: defaultOrderCfg, bill: defaultBillCfg };
 }
 
-// ======================== BUILD ORDER TICKET CONTENT (ĐƠN GIẢN: STT + Bàn + Món x SL) ========================
+// ======================== BUILD ORDER TICKET CONTENT (SIMPLE: SEQ + TABLE + ITEM x QTY) ========================
 
 async function buildOrderContent(orderId: string, orderCfg: OrderCfg, sequence: number): Promise<string> {
   const order = await db.order.findUnique({
@@ -74,11 +70,7 @@ async function buildOrderContent(orderId: string, orderCfg: OrderCfg, sequence: 
   lines.push("\x1B\x40");
 
   if (orderCfg.showSequence) {
-    lines.push("\x1B\x61\x01");
-    lines.push("\x1B\x21\x30");
-    lines.push(`#${sequence}`);
-    lines.push("\x1B\x21\x00");
-    lines.push("\x1B\x61\x00");
+    lines.push("\x1B\x61\x01", "\x1B\x21\x30", `#${sequence}`, "\x1B\x21\x00", "\x1B\x61\x00");
   }
 
   if (orderCfg.showTable) lines.push(`Ban: ${order.table.name}`);
@@ -95,18 +87,107 @@ async function buildOrderContent(orderId: string, orderCfg: OrderCfg, sequence: 
   }
 
   if (orderCfg.showNote && order.note) {
-    lines.push("------------------------");
-    lines.push("* " + order.note);
+    lines.push("------------------------", "* " + order.note);
   }
 
-  lines.push("------------------------");
-  lines.push("\n\n\n\n");
-  lines.push("\x1D\x56\x00");
+  lines.push("------------------------", "\n\n\n\n", "\x1D\x56\x00");
 
   return lines.join("\n");
 }
 
 // ======================== BUILD BILL CONTENT ========================
+
+type BillItem = {
+  quantity: number;
+  unitPrice: number;
+  product: { name: string; slug: string };
+  toppings: { topping: { name: string } }[];
+};
+
+type BillOrderData = {
+  orderNumber: number;
+  orderNumberSuffix: string | null;
+  guestCount: number;
+  note: string | null;
+  subtotal: number;
+  vatAmount: number;
+  exciseTaxAmount: number;
+  discountAmount: number;
+  serviceCharge: number;
+  totalAmount: number;
+  table: { name: string };
+  items: BillItem[];
+  payments: { method: string; amount: number }[];
+  user: { name: string } | null;
+};
+
+type GenCfgData = { restaurantName?: string | null; address?: string | null; phone?: string | null; taxCode?: string | null } | null;
+
+function pushBillHeader(lines: string[], cfg: BillCfg, genCfg: GenCfgData, now: Date): void {
+  lines.push("\x1B\x40", "\x1B\x61\x01", "\x1B\x21\x10");
+  if (cfg.header.showLogo) lines.push("🍽️");
+  lines.push((genCfg?.restaurantName || "RESTAURANT").toUpperCase(), "\x1B\x21\x00");
+
+  const addrParts: string[] = [];
+  if (cfg.header.showAddress && genCfg?.address) addrParts.push(genCfg.address);
+  if (cfg.header.showPhone && genCfg?.phone) addrParts.push("📞 " + genCfg.phone);
+  if (addrParts.length > 0) lines.push(addrParts.join(" - "));
+  if (cfg.header.showTaxCode && genCfg?.taxCode) lines.push("MST: " + genCfg.taxCode);
+  if (cfg.header.showDateTime) lines.push(now.toLocaleDateString("vi-VN") + " " + now.toLocaleTimeString("vi-VN"));
+
+  lines.push("\x1B\x61\x00", "========================================", "             HOA DON BAN HANG             ", "========================================");
+}
+
+function pushBillMeta(lines: string[], cfg: BillCfg, order: BillOrderData, now: Date): void {
+  if (cfg.body.showOrderNumber) {
+    lines.push(`So HD: #${String(order.orderNumber).padStart(4, "0")}${order.orderNumberSuffix ? "-" + order.orderNumberSuffix : ""}`);
+  }
+  if (cfg.body.showTable) lines.push(`Ban: ${order.table.name}`);
+  if (cfg.body.showGuestCount) lines.push(`So khach: ${order.guestCount}`);
+  lines.push("Ngay: " + now.toLocaleDateString("vi-VN") + " " + now.toLocaleTimeString("vi-VN"));
+  if (order.user?.name) lines.push(`Thu ngan: ${order.user.name}`);
+  lines.push("----------------------------------------");
+
+  let colHeader = "Ten mon".padEnd(22);
+  if (cfg.body.showQuantity) colHeader += "SL".padStart(4);
+  if (cfg.body.showUnitPrice) colHeader += "DG".padStart(12);
+  if (cfg.body.showAmount) colHeader += "TT".padStart(12);
+  lines.push(colHeader, "----------------------------------------");
+}
+
+function pushBillItems(lines: string[], cfg: BillCfg, items: BillItem[]): void {
+  for (const item of items) {
+    lines.push(item.product.name);
+    if (cfg.body.showTopping && item.toppings.length > 0) {
+      lines.push("  + " + item.toppings.map(t => t.topping.name).join(", "));
+    }
+    const qty = cfg.body.showQuantity ? String(item.quantity) : "";
+    const price = cfg.body.showUnitPrice ? fmt(item.unitPrice) : "";
+    const amount = cfg.body.showAmount ? fmt(item.unitPrice * item.quantity) : "";
+    if (qty || price || amount) lines.push(`${qty.padStart(3)}  ${price.padStart(12)}${amount.padStart(12)}`);
+  }
+  lines.push("----------------------------------------");
+}
+
+function pushBillTotals(lines: string[], cfg: BillCfg, order: BillOrderData): void {
+  if (cfg.footer.showSubtotal) lines.push(`Tien hang:`.padEnd(28) + fmt(order.subtotal).padStart(18));
+  if (cfg.footer.showVat && order.vatAmount > 0) lines.push(`Thue VAT:`.padEnd(28) + fmt(order.vatAmount).padStart(18));
+  if (order.exciseTaxAmount > 0) lines.push(`Thue TTDB:`.padEnd(28) + fmt(order.exciseTaxAmount).padStart(18));
+  if (cfg.footer.showDiscount && order.discountAmount > 0) lines.push(`Giam gia:`.padEnd(28) + ("-" + fmt(order.discountAmount)).padStart(18));
+  if (cfg.footer.showServiceCharge && order.serviceCharge > 0) lines.push(`Phi dich vu:`.padEnd(28) + fmt(order.serviceCharge).padStart(18));
+
+  lines.push("========================================");
+  if (cfg.footer.showTotal) lines.push("\x1B\x21\x10", `TONG CONG:`.padEnd(28) + fmt(order.totalAmount).padStart(18), "\x1B\x21\x00");
+  lines.push("========================================");
+}
+
+function pushBillFooter(lines: string[], cfg: BillCfg, order: BillOrderData): void {
+  if (cfg.footer.showPaymentMethod && order.payments.length > 0) {
+    lines.push("Thanh toan:");
+    for (const p of order.payments) lines.push(`  ${p.method}: ${fmt(p.amount)}`);
+  }
+  if (cfg.footer.thankYou) lines.push("\x1B\x61\x01", cfg.footer.thankYou);
+}
 
 async function buildBillContent(orderId: string, billCfg: BillCfg): Promise<string> {
   const order = await db.order.findUnique({
@@ -131,102 +212,13 @@ async function buildBillContent(orderId: string, billCfg: BillCfg): Promise<stri
   const now = new Date();
   const lines: string[] = [];
 
-  lines.push("\x1B\x40");
-  lines.push("\x1B\x61\x01");
-  lines.push("\x1B\x21\x10");
-  if (billCfg.header.showLogo) lines.push("🍽️");
-  lines.push((genCfg?.restaurantName || "NHÀ HÀNG").toUpperCase());
-  lines.push("\x1B\x21\x00");
+  pushBillHeader(lines, billCfg, genCfg, now);
+  pushBillMeta(lines, billCfg, order, now);
+  pushBillItems(lines, billCfg, order.items);
+  pushBillTotals(lines, billCfg, order);
+  pushBillFooter(lines, billCfg, order);
 
-  const addrParts: string[] = [];
-  if (billCfg.header.showAddress && genCfg?.address) addrParts.push(genCfg.address);
-  if (billCfg.header.showPhone && genCfg?.phone) addrParts.push("📞 " + genCfg.phone);
-  if (addrParts.length > 0) lines.push(addrParts.join(" - "));
-  if (billCfg.header.showTaxCode && genCfg?.taxCode) lines.push("MST: " + genCfg.taxCode);
-  if (billCfg.header.showDateTime) {
-    lines.push(now.toLocaleDateString("vi-VN") + " " + now.toLocaleTimeString("vi-VN"));
-  }
-
-  lines.push("\x1B\x61\x00");
-  lines.push("========================================");
-  lines.push("             HOA DON BAN HANG             ");
-  lines.push("========================================");
-
-  if (billCfg.body.showOrderNumber) {
-    lines.push(`So HD: #${String(order.orderNumber).padStart(4, "0")}${order.orderNumberSuffix ? "-" + order.orderNumberSuffix : ""}`);
-  }
-  if (billCfg.body.showTable) lines.push(`Ban: ${order.table.name}`);
-  if (billCfg.body.showGuestCount) lines.push(`So khach: ${order.guestCount}`);
-  lines.push("Ngay: " + now.toLocaleDateString("vi-VN") + " " + now.toLocaleTimeString("vi-VN"));
-  if (order.user?.name) lines.push(`Thu ngan: ${order.user.name}`);
-
-  lines.push("----------------------------------------");
-
-  let colHeader = "Ten mon";
-  colHeader = colHeader.padEnd(22);
-  if (billCfg.body.showQuantity) colHeader += "SL".padStart(4);
-  if (billCfg.body.showUnitPrice) colHeader += "DG".padStart(12);
-  if (billCfg.body.showAmount) colHeader += "TT".padStart(12);
-  lines.push(colHeader);
-  lines.push("----------------------------------------");
-
-  for (const item of order.items) {
-    const name = item.product.name;
-    const qty = billCfg.body.showQuantity ? String(item.quantity) : "";
-    const price = billCfg.body.showUnitPrice ? fmt(item.unitPrice) : "";
-    const amount = billCfg.body.showAmount ? fmt(item.unitPrice * item.quantity) : "";
-
-    lines.push(name);
-    if (billCfg.body.showTopping && item.toppings.length > 0) {
-      lines.push("  + " + item.toppings.map(t => t.topping.name).join(", "));
-    }
-    if (qty || price || amount) {
-      const detail = `${qty.padStart(3)}  ${price.padStart(12)}${amount.padStart(12)}`;
-      lines.push(detail);
-    }
-  }
-
-  lines.push("----------------------------------------");
-
-  if (billCfg.footer.showSubtotal) {
-    lines.push(`Tien hang:`.padEnd(28) + fmt(order.subtotal).padStart(18));
-  }
-  if (billCfg.footer.showVat && order.vatAmount > 0) {
-    lines.push(`Thue VAT:`.padEnd(28) + fmt(order.vatAmount).padStart(18));
-  }
-  if (order.exciseTaxAmount > 0) {
-    lines.push(`Thue TTDB:`.padEnd(28) + fmt(order.exciseTaxAmount).padStart(18));
-  }
-  if (billCfg.footer.showDiscount && order.discountAmount > 0) {
-    lines.push(`Giam gia:`.padEnd(28) + ("-" + fmt(order.discountAmount)).padStart(18));
-  }
-  if (billCfg.footer.showServiceCharge && order.serviceCharge > 0) {
-    lines.push(`Phi dich vu:`.padEnd(28) + fmt(order.serviceCharge).padStart(18));
-  }
-
-  lines.push("========================================");
-  if (billCfg.footer.showTotal) {
-    lines.push("\x1B\x21\x10");
-    lines.push(`TONG CONG:`.padEnd(28) + fmt(order.totalAmount).padStart(18));
-    lines.push("\x1B\x21\x00");
-  }
-  lines.push("========================================");
-
-  if (billCfg.footer.showPaymentMethod && order.payments.length > 0) {
-    lines.push("Thanh toan:");
-    for (const p of order.payments) {
-      lines.push(`  ${p.method}: ${fmt(p.amount)}`);
-    }
-  }
-
-  if (billCfg.footer.thankYou) {
-    lines.push("\x1B\x61\x01");
-    lines.push(billCfg.footer.thankYou);
-  }
-
-  lines.push("\n\n\n\n");
-  lines.push("\x1D\x56\x00");
-
+  lines.push("\n\n\n\n", "\x1D\x56\x00");
   return lines.join("\n");
 }
 
@@ -241,27 +233,31 @@ async function buildTempBillContent(orderId: string, billCfg: BillCfg): Promise<
 async function sendToPrinter(ip: string, port: number, content: string): Promise<{ success: boolean; error?: string }> {
   return new Promise((resolve) => {
     const client = new net.Socket();
-    const timeout = setTimeout(() => {
+
+    function finish(result: { success: boolean; error?: string }) {
       client.destroy();
-      resolve({ success: false, error: "Timeout connecting to printer" });
-    }, 5000);
+      resolve(result);
+    }
+
+    const timeout = setTimeout(() => finish({ success: false, error: "Timeout connecting to printer" }), 5000);
+
+    function onWrite(err?: Error | null) {
+      if (err) {
+        finish({ success: false, error: err.message });
+      } else {
+        // Give printer time to process
+        setTimeout(() => finish({ success: true }), 500);
+      }
+    }
 
     client.connect(port, ip, () => {
       clearTimeout(timeout);
-      client.write(content, "utf-8", (err) => {
-        if (err) {
-          client.destroy();
-          resolve({ success: false, error: err.message });
-        } else {
-          // Give printer time to process
-          setTimeout(() => { client.destroy(); resolve({ success: true }); }, 500);
-        }
-      });
+      client.write(content, "utf-8", onWrite);
     });
 
     client.on("error", (err) => {
       clearTimeout(timeout);
-      resolve({ success: false, error: err.message });
+      finish({ success: false, error: err.message });
     });
   });
 }
@@ -356,7 +352,7 @@ export async function createPrintJob(params: {
 // ======================== GET PRINT JOBS ========================
 
 export async function getPrintJobs(date?: string, type?: string) {
-  const where: any = {};
+  const where: Prisma.PrintJobWhereInput = {};
   if (date) {
     const start = new Date(date);
     start.setHours(0, 0, 0, 0);

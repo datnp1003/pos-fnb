@@ -16,7 +16,7 @@ type Module = {
   updatedAt: Date;
 };
 
-export function ModulesClient({ modules: initialModules }: { modules: Module[] }) {
+export function ModulesClient({ modules: initialModules }: Readonly<{ modules: Module[] }>) {
   const { t, locale } = useI18n();
   const [modules, setModules] = useState(initialModules);
 
@@ -29,7 +29,7 @@ export function ModulesClient({ modules: initialModules }: { modules: Module[] }
   };
 
   async function handleToggle(id: string, currentEnabled: boolean) {
-    const action = !currentEnabled ? t.modules.enabledAction : t.modules.disabledAction;
+    const action = currentEnabled ? t.modules.disabledAction : t.modules.enabledAction;
     setModules(prev => prev.map(m => m.id === id ? { ...m, enabled: !currentEnabled } : m));
     try {
       await toggleModule(id, !currentEnabled);

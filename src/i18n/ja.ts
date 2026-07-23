@@ -163,6 +163,7 @@ export const ja = {
     "noStockIns": "入庫伝票はまだありません",
     "noStockOuts": "出庫伝票はまだありません",
     "manualAddRow": "または手動で行を追加",
+    "ingredientList": "原材料リスト",
     "totalItems": "合計数量：",
     "all": "すべて",
     "showing": "表示中",
@@ -474,6 +475,9 @@ export const ja = {
     "toppingPageDesc": "商品オプショングループ：サイズ、甘さ、追加トッピング…",
     "areaPageDesc": "エリアとテーブルの管理です。",
     "paymentMethodPageDesc": "現金、振込、Momo、カード…",
+    "currenciesPageDesc": "通貨の管理 — 基本通貨と為替レートを設定します。",
+    "exchangeRate": "為替レート",
+    "primary": "主要",
     "ingredientPageDesc": "原材料一覧とメニューごとのレシピです。",
     "productPageDesc": "料理・ドリンクメニューの管理です。",
     "unitPageDesc": "単位：kg、g、リットル、個、人前…",
@@ -661,6 +665,8 @@ export const ja = {
     "noDesc": "説明はありません。"
   },
   "common": {
+    "symbol": "シンボル",
+    "confirmDelete": "本当に削除しますか？",
     "save": "保存",
     "cancel": "取消",
     "add": "追加",

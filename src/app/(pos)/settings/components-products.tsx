@@ -26,7 +26,8 @@ type Cat = { id: string; name: string };
 type Vat = { id: string; name: string; rate: number };
 type Excise = { id: string; name: string; rate: number };
 type Unit = { id: string; name: string };
-type ActionFn = (...args: any[]) => Promise<any>;
+type ActionFn = (...args: never[]) => Promise<unknown>;
+type LooseFn = (...args: unknown[]) => Promise<unknown>;
 type IngredientBasic = { id: string; name: string; baseUnit: string; currentStock: number };
 type ToppingGroupType = { id: string; name: string; type: string; toppings: { id: string; name: string; price: number }[]; _count: { toppings: number } };
 
@@ -37,17 +38,19 @@ type RecipeItem = {
   unit?: { id: string; name: string } | null;
 };
 
+function fmtPrice(v: number) { return new Intl.NumberFormat("vi-VN").format(v || 0); }
+
 export function ProductsManager({
   products, categories, vats, exciseTaxes, units, createProduct, updateProduct, deleteProduct,
   allIngredients, toppingGroups, linkToppingGroup, unlinkToppingGroup,
-}: {
+}: Readonly<{
   products: Product[]; categories: Cat[]; vats: Vat[]; exciseTaxes: Excise[]; units: Unit[];
   createProduct: ActionFn; updateProduct: ActionFn; deleteProduct: ActionFn;
   allIngredients: IngredientBasic[];
   toppingGroups: ToppingGroupType[];
   linkToppingGroup: ActionFn;
   unlinkToppingGroup: ActionFn;
-}) {
+}>) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
@@ -85,7 +88,8 @@ export function ProductsManager({
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const pageItems = filtered.slice((page - 1) * perPage, page * perPage);
 
-  // Reset page when filter changes
+  // Reset page when filter changes — intentional reactive reset.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setPage(1); }, [catFilter, search]);
 
   function openNew() { setEditing(null); setForm({ name: "", slug: "", price: "0", costPrice: "0", categoryId: categories[0]?.id ?? "", vatId: vats[0]?.id ?? "", exciseTaxId: "", unitId: units[0]?.id ?? "", sortOrder: "0" }); setOpen(true); }
@@ -108,12 +112,12 @@ export function ProductsManager({
   }
 
   async function handleAddRecipe() {
-    if (!recipeForm.ingredientId || parseFloat(recipeForm.quantity) <= 0) {
+    if (!recipeForm.ingredientId || Number.parseFloat(recipeForm.quantity) <= 0) {
       toast.error(t.settings.ingredientRequired);
       return;
     }
     start(async () => {
-      await addRecipeItem({ productId: recipeProductId, ingredientId: recipeForm.ingredientId, quantity: parseFloat(recipeForm.quantity) });
+      await addRecipeItem({ productId: recipeProductId, ingredientId: recipeForm.ingredientId, quantity: Number.parseFloat(recipeForm.quantity) });
       toast.success(t.settings.recipeAdded);
       // Refresh recipe list
       const items = await getProductRecipe(recipeProductId);
@@ -134,18 +138,17 @@ export function ProductsManager({
   function save() {
     start(async () => {
       try {
-        const data = { name: form.name, slug: form.slug, price: parseFloat(form.price), costPrice: parseFloat(form.costPrice ?? "0"), categoryId: form.categoryId, vatId: form.vatId, exciseTaxId: form.exciseTaxId || undefined, unitId: form.unitId, sortOrder: parseInt(form.sortOrder) };
-        if (editing) await updateProduct(editing.id, data);
-        else await createProduct(data);
+        const data = { name: form.name, slug: form.slug, price: Number.parseFloat(form.price), costPrice: Number.parseFloat(form.costPrice ?? "0"), categoryId: form.categoryId, vatId: form.vatId, exciseTaxId: form.exciseTaxId || undefined, unitId: form.unitId, sortOrder: Number.parseInt(form.sortOrder, 10) };
+        if (editing) await (updateProduct as LooseFn)(editing.id, data);
+        else await (createProduct as LooseFn)(data);
         toast.success(editing ? t.settings.updated : t.settings.added);
         setOpen(false);
       } catch { toast.error(t.common.error); }
     });
   }
 
-  function handleDelete(id: string) { start(async () => { await deleteProduct(id); toast.success(t.common.success); }); }
+  function handleDelete(id: string) { start(async () => { await (deleteProduct as LooseFn)(id); toast.success(t.common.success); }); }
 
-  function fmtPrice(v: number) { return new Intl.NumberFormat("vi-VN").format(v || 0); }
 
   return (
     <>
@@ -164,7 +167,7 @@ export function ProductsManager({
       <div className="flex flex-wrap gap-2 mb-4">
         <button
           className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-all ${
-            !catFilter ? "bg-amber-500 text-white shadow-sm" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+            catFilter ? "bg-gray-100 text-gray-500 hover:bg-gray-200" : "bg-amber-500 text-white shadow-sm"
           }`}
           onClick={() => setCatFilter("")}
         >{t.inventory.all}        </button>
@@ -185,7 +188,7 @@ export function ProductsManager({
       <p className="text-xs text-gray-400 mb-3">
         {t.inventory.showing} {filtered.length > 0 ? (page - 1) * perPage + 1 : 0}–{Math.min(page * perPage, filtered.length)} / {t.inventory.totalItems_products} {filtered.length}
         {catFilter && <span className="ml-2">· {t.inventory.filterBy} {categories.find(c => c.id === catFilter)?.name}</span>}
-        {search.trim() && <span className="ml-2">· {t.inventory.searchFor} "{search.trim()}"</span>}
+        {search.trim() && <span className="ml-2">· {t.inventory.searchFor} &quot;{search.trim()}&quot;</span>}
       </p>
 
       {/* Table */}
@@ -197,8 +200,8 @@ export function ProductsManager({
               <th className="text-left px-4 py-3 font-semibold text-gray-600">{t.inventory.typeColumn}</th>
               <th className="text-left px-4 py-3 font-semibold text-gray-600">{t.settings.price}</th>
               <th className="text-left px-4 py-3 font-semibold text-gray-600">{t.settings.vat}</th>
-              <th className="text-left px-4 py-3 font-semibold text-gray-600">TTĐB</th>
-              <th className="text-left px-4 py-3 font-semibold text-gray-600">ĐVT</th>
+              <th className="text-left px-4 py-3 font-semibold text-gray-600">{t.settings.exciseTax}</th>
+              <th className="text-left px-4 py-3 font-semibold text-gray-600">{t.settings.units}</th>
               <th className="w-32 px-4 py-3 text-right text-gray-400 text-xs font-medium">{t.settings.actions}</th>
             </tr>
           </thead>
@@ -212,7 +215,7 @@ export function ProductsManager({
                   <Coffee className="h-4 w-4 text-gray-400" /> {p.name} {!p.isAvailable && <Badge variant="secondary">{t.settings.inactive}</Badge>}
                 </td>
                 <td className="px-4 py-3"><Badge variant="outline">{p.category?.name}</Badge></td>
-                <td className="px-4 py-3 font-mono text-sm">{fmtPrice(p.price)} ₫</td>
+                <td className="px-4 py-3 font-mono text-sm">{fmtPrice(p.price)}{t.common.d || "₫"}</td>
                 <td className="px-4 py-3">{p.vat?.name} ({(p.vat?.rate ?? 0) * 100}%)</td>
                 <td className="px-4 py-3">{p.exciseTax ? `${p.exciseTax.name} (${p.exciseTax.rate * 100}%)` : "—"}</td>
                 <td className="px-4 py-3">{p.unit?.name}</td>
@@ -381,13 +384,13 @@ export function ProductsManager({
           selectedGroupIds={new Set(products.find(p => p.id === toppingProductId)?.toppingGroups?.map(tg => tg.toppingGroup.id) ?? [])}
           onLink={async (groupId) => {
             start(async () => {
-              await linkToppingGroup(toppingProductId, groupId);
+              await (linkToppingGroup as LooseFn)(toppingProductId, groupId);
               toast.success(t.settings.recipeAssigned);
             });
           }}
           onUnlink={async (groupId) => {
             start(async () => {
-              await unlinkToppingGroup(toppingProductId, groupId);
+              await (unlinkToppingGroup as LooseFn)(toppingProductId, groupId);
               toast.success(t.settings.recipeUnassigned);
             });
           }}
@@ -400,7 +403,7 @@ export function ProductsManager({
 
 function ToppingLinkDialog({
   productId, productName, toppingGroups, selectedGroupIds, onLink, onUnlink, onClose
-}: {
+}: Readonly<{
   productId: string;
   productName: string;
   toppingGroups: ToppingGroupType[];
@@ -408,8 +411,8 @@ function ToppingLinkDialog({
   onLink: (groupId: string) => Promise<void>;
   onUnlink: (groupId: string) => Promise<void>;
   onClose: () => void;
-}) {
-  const [pending, start] = useTransition();
+}>) {
+  const [, start] = useTransition();
   const [localSelected, setLocalSelected] = useState(new Set(selectedGroupIds));
   const { t } = useI18n();
 
@@ -443,9 +446,10 @@ function ToppingLinkDialog({
             toppingGroups.map(g => {
               const isLinked = localSelected.has(g.id);
               return (
-                <div
+                <button
+                  type="button"
                   key={g.id}
-                  className={`flex items-center justify-between border rounded-xl p-4 cursor-pointer transition-all ${
+                  className={`w-full text-left flex items-center justify-between border rounded-xl p-4 cursor-pointer transition-all ${
                     isLinked ? "border-amber-300 bg-amber-50 shadow-sm" : "border-gray-200 hover:border-gray-300"
                   }`}
                   onClick={() => toggle(g.id)}
@@ -459,9 +463,9 @@ function ToppingLinkDialog({
                       {isLinked && <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300">{t.inventory.linkedToppingBadge}</Badge>}
                     </div>
                     <div className="flex flex-wrap gap-1 mt-1.5">
-                      {g.toppings.map(t => (
-                        <span key={t.id} className="inline-flex text-[11px] bg-white border border-gray-200 rounded-md px-2 py-0.5 text-gray-500">
-                          {t.name}{t.price > 0 ? <span className="text-gray-400 ml-1">+{t.price.toLocaleString()}đ</span> : null}
+                      {g.toppings.map(top => (
+                        <span key={top.id} className="inline-flex text-[11px] bg-white border border-gray-200 rounded-md px-2 py-0.5 text-gray-500">
+                          {top.name}{top.price > 0 ? <span className="text-gray-400 ml-1">+{top.price.toLocaleString()}{t.common.d}</span> : null}
                         </span>
                       ))}
                     </div>
@@ -471,7 +475,7 @@ function ToppingLinkDialog({
                   }`}>
                     {isLinked && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
                   </div>
-                </div>
+                </button>
               );
             })
           )}

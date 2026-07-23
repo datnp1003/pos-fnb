@@ -9,24 +9,25 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Plus, Pencil, Trash2, Layers } from "lucide-react";
-import { toast } from "sonner";
+import { runAction } from "@/lib/run-action";
 import { useI18n } from "@/i18n/context";
 
 type Group = { id: string; name: string; type: string; toppings: Topping[]; _count: { toppings: number } };
 type Topping = { id: string; name: string; price: number; toppingGroupId: string };
-type ActionFn = (...args: any[]) => Promise<any>;
+type ActionFn = (...args: never[]) => Promise<unknown>;
+type LooseFn = (...args: unknown[]) => Promise<unknown>;
 type Cat = { id: string; name: string };
 type ProductInfo = { id: string; name: string; categoryId: string; category?: { name: string } | null; toppingGroups?: { toppingGroup: { id: string } }[] };
 
 export function ToppingsManager({
   groups, createGroup, updateGroup, deleteGroup, createTopping, updateTopping, deleteTopping,
   categories, products, linkToppingGroup, unlinkToppingGroup,
-}: {
+}: Readonly<{
   groups: Group[]; createGroup: ActionFn; updateGroup: ActionFn; deleteGroup: ActionFn;
   createTopping: ActionFn; updateTopping: ActionFn; deleteTopping: ActionFn;
   categories: Cat[]; products: ProductInfo[];
   linkToppingGroup: ActionFn; unlinkToppingGroup: ActionFn;
-}) {
+}>) {
   const { t } = useI18n();
   const [pending, start] = useTransition();
   const [openGroup, setOpenGroup] = useState(false);
@@ -36,8 +37,14 @@ export function ToppingsManager({
   const [gForm, setGForm] = useState({ name: "", type: "SINGLE" });
   const [tForm, setTForm] = useState({ name: "", price: "0", toppingGroupId: "" });
 
-  function doAct(fn: ActionFn, ...args: any[]) {
-    start(async () => { try { await fn(...args); toast.success(t.common.success); setOpenGroup(false); setOpenTopping(false); } catch { toast.error(t.common.error); } });
+  function doAct(fn: ActionFn, ...args: unknown[]) {
+    start(async () => {
+      await runAction(
+        () => (fn as LooseFn)(...args),
+        { success: t.common.success, error: t.common.error },
+        () => { setOpenGroup(false); setOpenTopping(false); },
+      );
+    });
   }
 
   const typeLabel: Record<string, string> = { SINGLE: t.inventory.typeSingle, MULTIPLE: t.inventory.typeMultiple, REQUIRED: t.inventory.typeRequired };
@@ -68,12 +75,12 @@ export function ToppingsManager({
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-2 mb-2">
-              {g.toppings.map(t => (
-                <div key={t.id} className="flex items-center gap-1 border rounded-md px-3 py-1.5 text-sm">
-                  <span>{t.name}</span>
-                  {t.price > 0 && <span className="text-muted-foreground text-xs">+{t.price.toLocaleString()}đ</span>}
-                  <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => { setEditTopping(t); setTForm({ name: t.name, price: t.price.toString(), toppingGroupId: t.toppingGroupId }); setOpenTopping(true); }}><Pencil className="h-2.5 w-2.5" /></Button>
-                  <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => doAct(deleteTopping, t.id)}><Trash2 className="h-2.5 w-2.5 text-destructive" /></Button>
+              {g.toppings.map(top => (
+                <div key={top.id} className="flex items-center gap-1 border rounded-md px-3 py-1.5 text-sm">
+                  <span>{top.name}</span>
+                  {top.price > 0 && <span className="text-muted-foreground text-xs">+{top.price.toLocaleString()}{t.common.d}</span>}
+                  <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => { setEditTopping(top); setTForm({ name: top.name, price: top.price.toString(), toppingGroupId: top.toppingGroupId }); setOpenTopping(true); }}><Pencil className="h-2.5 w-2.5" /></Button>
+                  <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => doAct(deleteTopping, top.id)}><Trash2 className="h-2.5 w-2.5 text-destructive" /></Button>
                 </div>
               ))}
             </div>
@@ -102,7 +109,7 @@ export function ToppingsManager({
             <div className="space-y-1"><Label>{t.settings.name}</Label><Input value={gForm.name} onChange={e => setGForm(f => ({ ...f, name: e.target.value }))} /></div>
             <div className="space-y-1"><Label>{t.settings.type}</Label>
               <Select value={gForm.type} onValueChange={v => setGForm(f => ({ ...f, type: v ?? "" }))}>
-                <SelectTrigger><SelectValue placeholder={t.settings.type}>{gForm.type === "SINGLE" ? t.inventory.typeSingle : gForm.type === "MULTIPLE" ? t.inventory.typeMultiple : gForm.type === "REQUIRED" ? t.inventory.typeRequired : ""}</SelectValue></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder={t.settings.type}>{typeLabel[gForm.type] ?? ""}</SelectValue></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="SINGLE">{t.inventory.typeSingle} (Single)</SelectItem>
                   <SelectItem value="MULTIPLE">{t.inventory.typeMultiple} (Multiple)</SelectItem>
@@ -112,7 +119,7 @@ export function ToppingsManager({
             </div>
           </div>
           <DialogFooter>
-            <Button disabled={pending} onClick={() => doAct(editGroup ? updateGroup : createGroup, editGroup?.id, editGroup ? gForm : gForm)}>{pending ? t.common.saving : t.common.save}</Button>
+            <Button disabled={pending} onClick={() => doAct(editGroup ? updateGroup : createGroup, editGroup?.id, gForm)}>{pending ? t.common.saving : t.common.save}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -126,7 +133,7 @@ export function ToppingsManager({
           </div>
           <DialogFooter>
             <Button disabled={pending} onClick={() => {
-              const data = { name: tForm.name, price: parseFloat(tForm.price) || 0 };
+              const data = { name: tForm.name, price: Number.parseFloat(tForm.price) || 0 };
               if (editTopping) doAct(updateTopping, editTopping.id, data);
               else doAct(createTopping, { ...data, toppingGroupId: tForm.toppingGroupId, sortOrder: 0 });
             }}>{pending ? t.common.saving : t.common.save}</Button>
@@ -138,8 +145,8 @@ export function ToppingsManager({
 }
 
 function LinkedProductsSection({
-  groupId, products, categories, onLink, onUnlink, pending, start
-}: {
+  groupId, products, categories, onLink, onUnlink, start
+}: Readonly<{
   groupId: string;
   products: ProductInfo[];
   categories: Cat[];
@@ -147,7 +154,7 @@ function LinkedProductsSection({
   onUnlink: ActionFn;
   pending: boolean;
   start: (fn: () => Promise<void>) => void;
-}) {
+}>) {
   const { t } = useI18n();
   const [showPicker, setShowPicker] = useState(false);
   const [catFilter, setCatFilter] = useState("");
@@ -162,6 +169,10 @@ function LinkedProductsSection({
     if (!linkedByCat[catName]) linkedByCat[catName] = [];
     linkedByCat[catName].push(p);
   });
+
+  function handleUnlink(productId: string) {
+    start(async () => { await (onUnlink as LooseFn)(productId, groupId); });
+  }
 
   return (
     <div className="mt-3 border-t pt-3">
@@ -193,7 +204,7 @@ function LinkedProductsSection({
                     {p.name}
                     <button
                       className="ml-0.5 hover:bg-red-100 rounded p-0.5 text-amber-400 hover:text-red-500"
-                      onClick={() => start(async () => { await onUnlink(p.id, groupId); })}
+                      onClick={() => handleUnlink(p.id)}
                     >
                       <Trash2 className="h-2.5 w-2.5" />
                     </button>
@@ -228,7 +239,7 @@ function LinkedProductsSection({
                 <button
                   key={p.id}
                   className="inline-flex items-center gap-1 text-[11px] bg-white border border-gray-200 hover:border-amber-300 hover:bg-amber-50 rounded-md px-2.5 py-1 text-gray-600 hover:text-amber-700 transition-colors"
-                  onClick={() => start(async () => { await onLink(p.id, groupId); })}
+                  onClick={() => start(async () => { await (onLink as LooseFn)(p.id, groupId); })}
                 >
                   <Plus className="h-2.5 w-2.5" />
                   {p.name}

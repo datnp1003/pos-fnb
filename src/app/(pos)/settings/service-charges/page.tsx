@@ -1,6 +1,5 @@
 import { getServiceCharges, getAreas_list, getCategories, createServiceCharge, updateServiceCharge, deleteServiceCharge } from "@/server/settings/actions";
 import { ServiceChargesUI } from "../service-charges-ui";
-import { getDictionary } from "@/i18n/dictionaries";
 
 export default async function ServiceChargesPage() {
   const [charges, categories, areas] = await Promise.all([getServiceCharges(), getCategories(), getAreas_list()]);

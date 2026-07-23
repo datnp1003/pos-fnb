@@ -1,62 +1,238 @@
-name: Build & Auto-Merge dev_lor → main
+name: CI Quality Gate — Out-Main → main
 
 on:
-  push:
-    branches: [dev_lor]
+  pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: build-merge-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# Permissões gerais. O job de auto-merge vai pedir permissões de write extras.
 permissions:
-  contents: write
-  actions: write
+  contents: read
+  pull-requests: read
+
+# Força o uso de Node.js 24 em todas as GitHub Actions
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  build:
+# ─────────────────────────────────────────────────────────────────────────────
+# Jobs Paralelos: Lint, Typecheck e Unit Tests rodam ao mesmo tempo! 🚀
+# ─────────────────────────────────────────────────────────────────────────────
+
+  lint:
+    name: Lint (ESLint)
     runs-on: ubuntu-latest
-    env:
-      DATABASE_URL: "file:./dev.db"
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
+          cache: npm
+
+      - name: Cache node_modules
+        id: cache-node
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Install dependencies
+        if: steps.cache-node.outputs.cache-hit != 'true'
         run: npm ci
 
-      - name: Generate Prisma client
+      - name: Run ESLint
+        run: npm run lint -- --format json --output-file eslint-report.json
+
+      - name: Upload ESLint report
+        uses: actions/upload-artifact@v4
+        with:
+          name: eslint-report
+          path: eslint-report.json
+
+  typecheck:
+    name: Type Check (TypeScript)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Cache node_modules
+        id: cache-node
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        if: steps.cache-node.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Cache Prisma Client
+        id: cache-prisma
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.prisma
+          key: prisma-${{ runner.os }}-${{ hashFiles('prisma/schema.prisma') }}
+
+      - name: Generate Prisma Client
+        if: steps.cache-prisma.outputs.cache-hit != 'true'
         run: npx prisma generate
 
-      - name: Push database schema
-        run: npx prisma db push --accept-data-loss
+      - name: Validate Prisma schema
+        run: npx prisma validate
 
       - name: Type check
-        run: npx tsc --noEmit
+        run: npx tsc -p tsconfig.typecheck.json --noEmit
+
+  unit:
+    name: Unit Tests (Vitest)
+    runs-on: ubuntu-latest
+    env:
+      AUTH_SECRET: "ci-secret-not-used"
+      AUTH_URL: "http://localhost:3000"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Cache node_modules
+        id: cache-node
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        if: steps.cache-node.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Cache Prisma Client
+        id: cache-prisma
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.prisma
+          key: prisma-${{ runner.os }}-${{ hashFiles('prisma/schema.prisma') }}
+
+      - name: Generate Prisma Client
+        if: steps.cache-prisma.outputs.cache-hit != 'true'
+        run: npx prisma generate
+
+      - name: Run tests with coverage
+        run: npm run test:coverage
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/lcov.info
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 4: Build (Next.js) - Só roda se Lint, Typecheck e Unit passarem
+# ─────────────────────────────────────────────────────────────────────────────
+  build:
+    name: Build (Next.js)
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck, unit]
+    env:
+      DATABASE_URL: "postgresql://posfnb:posfnb@localhost:5432/posfnb?schema=public"
+      AUTH_SECRET: "ci-secret-not-used"
+      AUTH_URL: "http://localhost:3000"
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Cache node_modules
+        id: cache-node
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        if: steps.cache-node.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Cache Prisma Client
+        id: cache-prisma
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.prisma
+          key: prisma-${{ runner.os }}-${{ hashFiles('prisma/schema.prisma') }}
+
+      - name: Generate Prisma Client
+        if: steps.cache-prisma.outputs.cache-hit != 'true'
+        run: npx prisma generate
 
       - name: Build
-        run: npx next build
+        run: npm run build
 
-  auto-merge:
-    needs: build
-    if: success()
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 5: SonarQube Scan + Quality Gate (Agora com bloqueio real)
+# ─────────────────────────────────────────────────────────────────────────────
+  sonar:
+    name: SonarQube Analysis
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    needs: build
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0 # Obrigatório para blame e histórico
 
-      - name: Merge dev_lor → main
+      - name: Download ESLint report
+        uses: actions/download-artifact@v4
+        with:
+          name: eslint-report
+
+      - name: Download coverage report
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage
+
+      - name: SonarQube Scan + Quality Gate
+        uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+        with:
+          args: >-
+            -Dsonar.qualitygate.wait=true # ALERTA CORRIGIDO: Agora ele espera e falha se não passar nos critérios
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 6: Auto-merge via GitHub CLI (Mais limpo e seguro)
+# ─────────────────────────────────────────────────────────────────────────────
+  auto-merge:
+    name: Auto-Merge Out-Main → main
+    needs: sonar
+    if: >
+      success() &&
+      github.event_name == 'pull_request' &&
+      github.base_ref == 'main' &&
+      github.head_ref == 'Out-Main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Habilitar Auto-Merge do PR via GitHub CLI
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          git checkout main
-          git merge dev_lor --no-ff -m "🔀 Auto-merge dev_lor → main (build ✅)"
-          git push origin main
-
-          echo "✅ dev_lor merged into main successfully!"
+          gh pr merge ${{ github.event.pull_request.number }} --merge --auto --repo ${{ github.repository }}
+          echo "✅ Auto-merge ativado com sucesso para a PR #${{ github.event.pull_request.number }}!"

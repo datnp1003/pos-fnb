@@ -1,7 +1,6 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { revalidatePath } from "next/cache";
 
 // ============ Audit Log ============
 export async function logAudit(params: {
@@ -63,7 +62,7 @@ export async function getOrderLogs(orderId?: string, limit = 50) {
   });
 }
 
-// Hook vào Auth.js -> log login
+// Hook into Auth.js -> log login
 export async function onSignIn(userId: string, username: string, ip?: string, userAgent?: string) {
   await logLogin({ userId, username, ip, userAgent, success: true });
 }

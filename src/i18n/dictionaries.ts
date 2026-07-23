@@ -15,7 +15,10 @@ import { ko } from "./ko";
 // === JA ===
 import { ja } from "./ja";
 
-const dictionaries: Record<Locale, typeof vi> = { vi, en, zh, ko, ja };
+// === PT ===
+import { pt } from "./pt";
+
+const dictionaries: Record<Locale, typeof vi> = { vi, en, zh, ko, ja, pt };
 
 export function getDictionary(locale: Locale) {
   return dictionaries[locale] || vi;
