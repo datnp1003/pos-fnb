@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireUser } from "@/lib/server-auth";
 import { createPrintJob } from "@/server/reports/print-actions";
 
 export async function GET(req: NextRequest) {
+  await requireUser();
   const { searchParams } = new URL(req.url);
   const orderId = searchParams.get("orderId");
   const type = searchParams.get("type") || "BILL";

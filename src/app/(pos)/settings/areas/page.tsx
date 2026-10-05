@@ -2,6 +2,9 @@ import { getAreas, createArea, updateArea, deleteArea, createTable, updateTable,
 import { AreasManager } from "../components-areas";
 import { getServerDictionary } from "@/lib/locale";
 
+// Area data comes from Prisma and must only be loaded at request time.
+export const dynamic = "force-dynamic";
+
 export default async function AreasPage() {
   const areas = await getAreas();
   const t = await getServerDictionary();

@@ -1,6 +1,6 @@
-const { chromium } = require("playwright");
-const path = require("path");
-const fs = require("fs");
+import { chromium } from "playwright";
+import path from "node:path";
+import fs from "node:fs";
 
 const SCREENSHOT_DIR = "/home/datnguyen/.openclaw/workspace/pos-fnb/screenshots";
 const BASE_URL = "http://localhost:3000";

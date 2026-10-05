@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireUser } from "@/lib/server-auth";
 import { getInvoiceReport, getSoldItemsReport, getRevenueReport, getIngredientReport, getWarehouseReport } from "@/server/reports/actions";
 import { exportInvoicesToExcel, exportSoldItemsToExcel, exportRevenueToExcel, exportIngredientsToExcel, exportWarehouseToExcel } from "@/server/reports/excel";
 
 export async function GET(req: NextRequest) {
+  await requireUser();
   const { searchParams } = new URL(req.url);
   const type = searchParams.get("type") || "revenue";
   const mode = searchParams.get("mode") || "day";

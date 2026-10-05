@@ -47,6 +47,9 @@ model GeneralConfig {
   taxCode        String?
   taxMode        String   @default("EXCLUSIVE") // INCLUSIVE | EXCLUSIVE
   logoUrl        String?
+  qrBankCode     String   @default("ICB")
+  qrAccountNumber String  @default("11415686")
+  qrAccountName  String   @default("HO KINH DOANH SAI GON AN COFFEE")
   currencyCode   String   @default("VND")
   timezone       String   @default("Asia/Ho_Chi_Minh")
   dateFormat     String   @default("dd/MM/yyyy")

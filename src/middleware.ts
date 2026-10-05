@@ -1,5 +1,5 @@
-import { auth } from "@/lib/auth";
-import { NextResponse } from "next/server";
+import { getToken } from "next-auth/jwt";
+import { NextRequest, NextResponse } from "next/server";
 
 const MODULE_ROUTES: Record<string, string> = {
   "/order": "order",
@@ -10,8 +10,9 @@ const MODULE_ROUTES: Record<string, string> = {
   "/dashboard": "dashboard",
 };
 
-export default auth((req) => {
+export default async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const token = await getToken({ req, secret: process.env.AUTH_SECRET });
 
   // Allow public routes
   if (pathname.startsWith("/login") || pathname.startsWith("/api/auth") || pathname.startsWith("/_next")) {
@@ -19,12 +20,12 @@ export default auth((req) => {
   }
 
   // Redirect to login if not authenticated
-  if (!req.auth?.user) {
+  if (!token) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
   // Check module permission
-  const session = req.auth.user;
+  const session = token;
   const permissions: string[] = (() => {
     try { return JSON.parse(session.permissions || "[]"); } catch { return []; }
   })();
@@ -58,7 +59,7 @@ export default auth((req) => {
   }
 
   return NextResponse.next();
-});
+}
 
 export const config = {
   matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico|logo.png|banner.png|manifest.json).*)"],

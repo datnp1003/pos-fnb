@@ -1,6 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
+import { requireUser } from "@/lib/server-auth";
 import { revalidatePath } from "next/cache";
 import { autoDeductStockForOrder } from "@/server/recipe/actions";
 import { isSystemModuleEnabled } from "@/server/settings/actions";
@@ -110,6 +111,8 @@ export async function getOrder(orderId: string) {
 // ============ ORDER ITEMS ============
 
 export async function addItem(orderId: string, productId: string, quantity: number = 1, toppings?: { toppingId: string; price: number }[]) {
+  await requireUser();
+  if (!Number.isInteger(quantity) || quantity <= 0) throw new Error("Invalid quantity");
   const product = await db.product.findUnique({ where: { id: productId } });
   if (!product) throw new Error("Product not found");
 
@@ -310,8 +313,16 @@ export async function printTempBill(orderId: string) {
 // ============ FINAL BILL + PAYMENT ============
 
 export async function checkoutOrder(orderId: string, payments: { method: string; amount: number; reference?: string }[], userId?: string) {
+  const user = await requireUser();
   const order = await getOrder(orderId);
   if (!order) throw new Error("Order not found");
+  if (order.status === "PAID" || order.status === "CANCELLED") throw new Error("Order is already closed");
+  if (!Array.isArray(payments) || payments.length === 0 || payments.some((payment) => !payment.method || !Number.isFinite(payment.amount) || payment.amount <= 0)) {
+    throw new Error("Invalid payment");
+  }
+  const paidTotal = payments.reduce((total, payment) => total + payment.amount, 0);
+  if (Math.abs(paidTotal - order.totalAmount) > 0.01) throw new Error("Payment total does not match order total");
+  const effectiveUserId = user.id;
 
   for (const p of payments) {
     await db.payment.create({
@@ -321,7 +332,7 @@ export async function checkoutOrder(orderId: string, payments: { method: string;
 
   await db.order.update({
     where: { id: orderId },
-    data: { status: "PAID", closedAt: new Date(), userId },
+    data: { status: "PAID", closedAt: new Date(), userId: effectiveUserId },
   });
 
   if (await isSystemModuleEnabled("inventory")) {

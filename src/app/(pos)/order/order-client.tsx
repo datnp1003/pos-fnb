@@ -260,7 +260,7 @@ function OrderDetailView({
   onAddItem, onUpdateQty, onRemoveItem, onCancelItem,
   pending, onGuestChange,
   btState, onBtConnect, onBtDisconnect,
-  onMobileCheckout, mobileCheckoutPending,
+  onMobileCheckout, mobileCheckoutPending, qrConfig,
 }: {
   orderDetail: OrderDetail; categories: Category[]; onBack: () => void;
   onSend: () => void; onTempBill: () => void; onCheckout: () => void; onMerge: () => void; onSplit: () => void;
@@ -275,6 +275,7 @@ function OrderDetailView({
   onBtDisconnect: () => void;
   onMobileCheckout: (method: string, amount: string) => void;
   mobileCheckoutPending: boolean;
+  qrConfig: QrConfig;
 }) {
   const { t } = useI18n();
   const { isMobile, isTablet, isDesktop } = useDeviceInfo();
@@ -405,6 +406,11 @@ function OrderDetailView({
               <option value="CASH">💵 {t.order.cash}</option><option value="BANK_TRANSFER">🏦 {t.order.transfer}</option><option value="MOMO">📱 Momo</option></select></div>
           <div><label className="text-sm font-medium text-gray-700 block mb-1">{t.order.amount}</label>
             <input type="text" inputMode="numeric" style={{ textAlign: "right" }} className="w-full h-12 px-4 rounded-lg border border-gray-200 text-xl font-mono font-bold" value={mPaymentAmount ? Number(mPaymentAmount).toLocaleString("vi-VN") : ""} onFocus={e => e.target.value = mPaymentAmount || ""} onBlur={e => { const v = e.target.value.replace(/[^0-9]/g, ""); setMPaymentAmount(v); }} onChange={e => { const v = e.target.value.replace(/[^0-9]/g, ""); setMPaymentAmount(v); }} placeholder="0" /></div>
+          {mPaymentMethod === "BANK_TRANSFER" && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-center">
+            <p className="text-xs font-semibold text-emerald-800">Quét mã để thanh toán</p>
+            <img src={qrImageUrl(qrConfig, Number(raw) || orderDetail!.totalAmount)} alt={`QR thanh toán ${qrConfig.accountName}`} className="mx-auto mt-2 size-48 rounded-lg bg-white object-contain" />
+            <p className="mt-2 text-xs text-emerald-900">{qrConfig.accountName}</p><p className="text-xs text-emerald-700">{qrConfig.accountNumber} · {qrConfig.bankCode}</p>
+          </div>}
           <div className="flex gap-3 pt-2">
             <button onClick={() => setMobileCheckout(false)} className="flex-1 h-12 rounded-xl border border-gray-200 font-medium text-sm text-gray-600 touch-manipulation">{t.order.cancel}</button>
             <button onClick={() => { if (!mobileCheckoutPending) onMobileCheckout(mPaymentMethod, raw); }} disabled={mobileCheckoutPending || !raw || parseFloat(raw) <= 0} className="flex-1 h-12 rounded-xl bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-all shadow-sm touch-manipulation">
@@ -598,7 +604,14 @@ function OrderDetailView({
 }
 
 // ─── MAIN ────────────────────────────────────────────────────────
-export function OrderClient({ areas, categories }: { areas: Area[]; categories: Category[] }) {
+type QrConfig = { bankCode: string; accountNumber: string; accountName: string };
+
+function qrImageUrl(config: QrConfig, amount: number) {
+  const addInfo = encodeURIComponent(`Thanh toan don hang ${new Date().toISOString().slice(0, 10)}`);
+  return `https://img.vietqr.io/image/${encodeURIComponent(config.bankCode)}-${encodeURIComponent(config.accountNumber)}-compact2.png?amount=${Math.max(0, Math.round(amount))}&addInfo=${addInfo}&accountName=${encodeURIComponent(config.accountName)}`;
+}
+
+export function OrderClient({ areas, categories, qrConfig }: { areas: Area[]; categories: Category[]; qrConfig: QrConfig }) {
   const { t } = useI18n();
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -790,6 +803,7 @@ export function OrderClient({ areas, categories }: { areas: Area[]; categories: 
           onBtConnect={bt.connect} onBtDisconnect={bt.disconnect}
           onMobileCheckout={handleMobileCheckout}
           mobileCheckoutPending={mobileCheckoutPending}
+          qrConfig={qrConfig}
         />
       )}
 
@@ -836,6 +850,11 @@ export function OrderClient({ areas, categories }: { areas: Area[]; categories: 
               <option value="CASH">💵 {t.order.cash}</option><option value="BANK_TRANSFER">🏦 {t.order.transfer}</option><option value="MOMO">📱 Momo</option></select></div>
           <div><label className="text-sm font-medium text-gray-700 block mb-1">{t.order.amount}</label>
             <input type="text" inputMode="numeric" style={{ textAlign: 'right' }} className="w-full h-11 px-4 rounded-lg border border-gray-200 text-lg font-mono font-bold" value={paymentAmount ? Number(paymentAmount).toLocaleString("vi-VN") : ""} onFocus={e => e.target.value = paymentAmount || ""} onBlur={e => { const raw = e.target.value.replace(/[^0-9]/g, ""); setPaymentAmount(raw); }} onChange={e => { const raw = e.target.value.replace(/[^0-9]/g, ""); setPaymentAmount(raw); }} placeholder="0" /></div>
+          {paymentMethod === "BANK_TRANSFER" && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-center">
+            <p className="text-xs font-semibold text-emerald-800">Quét mã để thanh toán</p>
+            <img src={qrImageUrl(qrConfig, Number(paymentAmount) || orderDetail!.totalAmount)} alt={`QR thanh toán ${qrConfig.accountName}`} className="mx-auto mt-2 size-48 rounded-lg bg-white object-contain" />
+            <p className="mt-2 text-xs text-emerald-900">{qrConfig.accountName}</p><p className="text-xs text-emerald-700">{qrConfig.accountNumber} · {qrConfig.bankCode}</p>
+          </div>}
           <div className="flex gap-3">
             <button onClick={() => setCheckoutDialog(false)} className="flex-1 h-11 rounded-lg border border-gray-200 font-medium text-sm text-gray-600">{t.order.cancel}</button>
             <button onClick={confirmCheckout} disabled={pending} className="flex-1 h-11 rounded-lg bg-red-500 text-white font-semibold text-sm">{t.order.checkout}</button>

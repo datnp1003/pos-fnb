@@ -1,6 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
+import { requirePermission, requireUser } from "@/lib/server-auth";
 import { revalidatePath, revalidateTag } from "next/cache";
 
 // ============ General Config ============
@@ -16,6 +17,9 @@ export async function updateGeneralConfig(data: {
   taxCode?: string;
   taxMode?: string;
   logoUrl?: string;
+  qrBankCode?: string;
+  qrAccountNumber?: string;
+  qrAccountName?: string;
   currencyCode?: string;
 }) {
   await db.generalConfig.upsert({

@@ -2,6 +2,9 @@ import { unstable_cache } from "next/cache";
 import { getSystemModules } from "@/server/settings/actions";
 import { PosLayoutClient } from "./pos-layout-client";
 
+// POS pages read Prisma-backed data and must render at request time.
+export const dynamic = "force-dynamic";
+
 // Cache system modules for 5 minutes — they rarely change
 const getCachedModules = unstable_cache(
   async (): Promise<string[]> => {

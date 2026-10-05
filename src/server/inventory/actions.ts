@@ -1,6 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
+import { requireUser } from "@/lib/server-auth";
 import { revalidatePath } from "next/cache";
 import { consumeFifoStock, createBatchForStockInItem } from "./fifo";
 
@@ -24,6 +25,8 @@ export async function createStockIn(data: {
   userId: string;
   items: { ingredientId: string; quantity: number; unitPrice: number }[];
 }) {
+  const user = await requireUser();
+  data = { ...data, userId: user.id };
   // Generate stock-in code: PN-YYYYMMDD-XXX
   const today = new Date();
   const dateStr = today.toISOString().slice(0, 10).replace(/-/g, "");
@@ -123,6 +126,9 @@ export async function createStockOut(data: {
   userId: string;
   note?: string;
 }) {
+  const user = await requireUser();
+  data = { ...data, userId: user.id };
+  if (!Number.isFinite(data.quantity) || data.quantity <= 0) throw new Error("Invalid stock quantity");
   const stockOut = await db.$transaction(async (tx) => {
     const created = await tx.stockOut.create({ data });
     await consumeFifoStock(tx, {
